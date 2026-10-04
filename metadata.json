@@ -1,0 +1,6 @@
+{
+  "name": "FlowTimer | 柔和運動間歇計時器",
+  "description": "專為手機打造的柔和間歇訓練計時器。支援自訂訓練項目、組合清單、語音提示與倒數音效、影片畫中畫預覽及日曆自動打卡。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
