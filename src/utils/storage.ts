@@ -1,10 +1,12 @@
-import { ExerciseItem, WorkoutRoutine, WorkoutLog, UserSettings } from '../types/workout';
+import { ExerciseItem, WorkoutRoutine, WorkoutLog, UserSettings, UserProfile, WeightLog } from '../types/workout';
 
 const STORAGE_KEYS = {
   EXERCISES: 'flowtimer_exercises_v1',
   ROUTINES: 'flowtimer_routines_v1',
   LOGS: 'flowtimer_logs_v1',
   SETTINGS: 'flowtimer_settings_v1',
+  PROFILE: 'flowtimer_user_profile_v1',
+  WEIGHT_LOGS: 'flowtimer_weight_logs_v1',
 };
 
 // High quality initial default exercises with real form tutorial videos and serene photos
@@ -241,6 +243,34 @@ export const DEFAULT_SETTINGS: UserSettings = {
   speechRate: 1.0,
 };
 
+export const DEFAULT_USER_PROFILE: UserProfile = {
+  name: 'Pui Yee',
+  avatar: 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=400&q=80',
+  heightCm: 165,
+  weightKg: 52.0,
+  goal: '維持體態與核心強化',
+  weeklyTargetDays: 4,
+};
+
+export function getSavedUserProfile(): UserProfile {
+  if (typeof window === 'undefined') return DEFAULT_USER_PROFILE;
+  const raw = localStorage.getItem(STORAGE_KEYS.PROFILE);
+  if (!raw) {
+    saveUserProfile(DEFAULT_USER_PROFILE);
+    return DEFAULT_USER_PROFILE;
+  }
+  try {
+    return { ...DEFAULT_USER_PROFILE, ...JSON.parse(raw) };
+  } catch {
+    return DEFAULT_USER_PROFILE;
+  }
+}
+
+export function saveUserProfile(profile: UserProfile): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(profile));
+}
+
 // Storage helper functions
 export function getSavedExercises(): ExerciseItem[] {
   if (typeof window === 'undefined') return DEFAULT_EXERCISES;
@@ -278,6 +308,20 @@ export function getSavedRoutines(): WorkoutRoutine[] {
 export function saveRoutines(routines: WorkoutRoutine[]): void {
   if (typeof window === 'undefined') return;
   localStorage.setItem(STORAGE_KEYS.ROUTINES, JSON.stringify(routines));
+}
+
+export function toggleFavoriteRoutine(id: string): WorkoutRoutine[] {
+  const current = getSavedRoutines();
+  const updated = current.map((r) => (r.id === id ? { ...r, isFavorite: !r.isFavorite } : r));
+  saveRoutines(updated);
+  return updated;
+}
+
+export function toggleFavoriteExercise(id: string): ExerciseItem[] {
+  const current = getSavedExercises();
+  const updated = current.map((e) => (e.id === id ? { ...e, isFavorite: !e.isFavorite } : e));
+  saveExercises(updated);
+  return updated;
 }
 
 export function getSavedLogs(): WorkoutLog[] {
@@ -324,6 +368,88 @@ export function addWorkoutLog(log: Omit<WorkoutLog, 'id'>): WorkoutLog {
   const updated = [newLog, ...currentLogs];
   saveLogs(updated);
   return newLog;
+}
+
+// Weight Logging & Tracking Functions
+export function getSavedWeightLogs(): WeightLog[] {
+  if (typeof window === 'undefined') return [];
+  const raw = localStorage.getItem(STORAGE_KEYS.WEIGHT_LOGS);
+  if (!raw) {
+    // Generate initial demo data for smooth trend visualization
+    const now = new Date();
+    const d1 = new Date(now); d1.setDate(now.getDate() - 10);
+    const d2 = new Date(now); d2.setDate(now.getDate() - 7);
+    const d3 = new Date(now); d3.setDate(now.getDate() - 4);
+    const d4 = new Date(now); d4.setDate(now.getDate() - 2);
+    const d5 = new Date(now);
+
+    const initialWeights: WeightLog[] = [
+      { id: 'w-1', date: formatDateKey(d1), weightKg: 52.8, recordedAt: d1.getTime(), note: '開始規律鍛鍊' },
+      { id: 'w-2', date: formatDateKey(d2), weightKg: 52.6, recordedAt: d2.getTime(), note: '早起晨練後' },
+      { id: 'w-3', date: formatDateKey(d3), weightKg: 52.3, recordedAt: d3.getTime() },
+      { id: 'w-4', date: formatDateKey(d4), weightKg: 52.1, recordedAt: d4.getTime() },
+      { id: 'w-5', date: formatDateKey(d5), weightKg: 52.0, recordedAt: d5.getTime(), note: '精神很好，核心收緊' },
+    ];
+    saveWeightLogs(initialWeights);
+    return initialWeights;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveWeightLogs(logs: WeightLog[]): void {
+  if (typeof window === 'undefined') return;
+  // Sort chronologically ascending
+  const sorted = [...logs].sort((a, b) => a.date.localeCompare(b.date));
+  localStorage.setItem(STORAGE_KEYS.WEIGHT_LOGS, JSON.stringify(sorted));
+}
+
+export function upsertWeightLog(date: string, weightKg: number, note?: string): WeightLog {
+  const current = getSavedWeightLogs();
+  const existingIdx = current.findIndex((w) => w.date === date);
+
+  let newOrUpdated: WeightLog;
+  if (existingIdx >= 0) {
+    newOrUpdated = {
+      ...current[existingIdx],
+      weightKg,
+      recordedAt: Date.now(),
+      note: note !== undefined ? note : current[existingIdx].note,
+    };
+    current[existingIdx] = newOrUpdated;
+  } else {
+    newOrUpdated = {
+      id: 'w-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+      date,
+      weightKg,
+      recordedAt: Date.now(),
+      note,
+    };
+    current.push(newOrUpdated);
+  }
+
+  saveWeightLogs(current);
+
+  // If this log is for today, also automatically sync with profile's weightKg
+  const todayStr = formatDateKey(new Date());
+  if (date === todayStr) {
+    const profile = getSavedUserProfile();
+    if (profile.weightKg !== weightKg) {
+      saveUserProfile({ ...profile, weightKg });
+    }
+  }
+
+  return newOrUpdated;
+}
+
+export function deleteWeightLog(id: string): void {
+  const current = getSavedWeightLogs();
+  const filtered = current.filter((w) => w.id !== id);
+  saveWeightLogs(filtered);
 }
 
 export function getSavedSettings(): UserSettings {
@@ -373,6 +499,8 @@ export interface FlowTimerBackupData {
   routines: WorkoutRoutine[];
   logs: WorkoutLog[];
   settings: UserSettings;
+  profile?: UserProfile;
+  weightLogs?: WeightLog[];
 }
 
 export function exportAllDataAsJSON(): void {
@@ -384,6 +512,8 @@ export function exportAllDataAsJSON(): void {
     routines: getSavedRoutines(),
     logs: getSavedLogs(),
     settings: getSavedSettings(),
+    profile: getSavedUserProfile(),
+    weightLogs: getSavedWeightLogs(),
   };
 
   const jsonStr = JSON.stringify(backup, null, 2);
@@ -418,6 +548,12 @@ export function importDataFromJSON(jsonText: string): { success: boolean; messag
     }
     if (data.settings && typeof data.settings === 'object') {
       saveSettings(data.settings);
+    }
+    if (data.profile && typeof data.profile === 'object') {
+      saveUserProfile(data.profile);
+    }
+    if (Array.isArray(data.weightLogs)) {
+      saveWeightLogs(data.weightLogs);
     }
 
     return { success: true, message: '備份資料已成功匯入！' };

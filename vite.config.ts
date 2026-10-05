@@ -11,7 +11,7 @@ export default defineConfig(() => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['icon.svg', 'apple-touch-icon.png'],
+        includeAssets: ['icon.svg'],
         manifest: {
           id: '/',
           name: 'FlowTimer | 柔和運動間歇計時器',
@@ -25,7 +25,7 @@ export default defineConfig(() => {
           icons: [
             {
               src: '/icon.svg',
-              sizes: 'any',
+              sizes: '192x192 512x512',
               type: 'image/svg+xml',
               purpose: 'any',
             },
@@ -35,7 +35,7 @@ export default defineConfig(() => {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
         },
         devOptions: {
-          enabled: true,
+          enabled: false,
         },
       }),
     ],

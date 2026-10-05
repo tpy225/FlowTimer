@@ -16,6 +16,7 @@ import { soundEffects, voiceAssistant } from '../utils/audio';
 import { exportAllDataAsJSON, importDataFromJSON } from '../utils/storage';
 import { PWAInstallGuide } from './PWAInstallGuide';
 import { Download, Upload, Database, FileText } from 'lucide-react';
+import { AISettingsCard } from './Settings/AISettingsCard';
 
 interface SettingsModalProps {
   settings: UserSettings;
@@ -86,11 +87,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     <div className="max-w-md mx-auto px-4 py-4 pb-24">
       {/* Header */}
       <div className="mb-4">
-        <h2 className="text-xl font-bold text-stone-900 tracking-tight">個人設定</h2>
-        <p className="text-xs text-stone-500 mt-0.5">自訂語音朗讀、倒數音效及訓練計時偏好</p>
+        <h2 className="text-xl font-bold text-stone-900 tracking-tight">個人與系統設定</h2>
+        <p className="text-xs text-stone-500 mt-0.5">自訂 AI 教練模型、語音音效及訓練偏好</p>
       </div>
 
       <div className="space-y-4">
+        {/* AI API & Provider Configuration Section */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-stone-900 font-bold text-sm px-1">
+            <Sparkles className="w-4 h-4 text-amber-600" />
+            AI 平台與 API 設定 (Provider & Model)
+          </div>
+          <AISettingsCard />
+        </div>
+
         {/* Voice and Speech */}
         <div className="bg-white rounded-3xl p-4 border border-stone-200/80 shadow-2xs space-y-3.5">
           <div className="flex items-center gap-2 text-stone-800 font-bold text-sm">

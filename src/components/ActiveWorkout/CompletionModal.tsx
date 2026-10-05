@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import confetti from 'canvas-confetti';
-import { Trophy, Calendar, Check, Star, ArrowRight, Share2, Sparkles } from 'lucide-react';
-import { WorkoutRoutine, WorkoutLog } from '../../types/workout';
+import { Trophy, Calendar, Check, Star, ArrowRight, Share2, Sparkles, Target } from 'lucide-react';
+import { WorkoutRoutine, WorkoutLog, WorkoutGoalPlan } from '../../types/workout';
 import { formatTime } from '../../utils/storage';
 
 interface CompletionModalProps {
@@ -13,6 +13,7 @@ interface CompletionModalProps {
   createdLogId: string;
   onGoToCalendar: () => void;
   onBackToHome: () => void;
+  goalPlan?: WorkoutGoalPlan;
 }
 
 export const CompletionModal: React.FC<CompletionModalProps> = ({
@@ -24,10 +25,18 @@ export const CompletionModal: React.FC<CompletionModalProps> = ({
   createdLogId,
   onGoToCalendar,
   onBackToHome,
+  goalPlan,
 }) => {
   const [rating, setRating] = useState(5);
   const [note, setNote] = useState('');
   const [savedSuccess, setSavedSuccess] = useState(false);
+
+  const matchedGoalRule = goalPlan?.rules?.find(
+    (r) =>
+      r.routineId === routine.id ||
+      r.routineTitle.toLowerCase().includes(routine.title.toLowerCase()) ||
+      routine.title.toLowerCase().includes(r.routineTitle.toLowerCase())
+  );
 
   useEffect(() => {
     // Fire beautiful soft pastel confetti
@@ -93,6 +102,26 @@ export const CompletionModal: React.FC<CompletionModalProps> = ({
             <div className="text-[11px] text-emerald-700">記錄已成功同步，可以在日曆隨時回顧成果</div>
           </div>
         </div>
+
+        {/* Automatic Goal Tracking Progress Notification */}
+        {matchedGoalRule && (
+          <div className="mt-2.5 p-3 bg-amber-50 rounded-2xl border border-amber-200/90 flex items-center gap-2.5 text-left animate-in fade-in">
+            <div className="w-7 h-7 rounded-xl bg-amber-200 text-amber-900 flex items-center justify-center shrink-0">
+              <Target className="w-4 h-4 text-amber-800" />
+            </div>
+            <div>
+              <div className="text-xs font-bold text-amber-950 flex items-center gap-1">
+                <span>自動計入運動目標！</span>
+                <span className="text-[9px] px-1.5 py-0.2 bg-amber-200/80 text-amber-900 rounded font-semibold">
+                  +1 次達標
+                </span>
+              </div>
+              <div className="text-[11px] text-amber-800 mt-0.5">
+                已自動推進【{goalPlan?.title}】之「{matchedGoalRule.routineTitle}」每週進度！
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Stats Grid */}
         <div className="grid grid-cols-3 gap-2 my-4">

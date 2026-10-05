@@ -1,7 +1,7 @@
 import React from 'react';
-import { Layers, Dumbbell, Calendar, Settings } from 'lucide-react';
+import { Layers, Dumbbell, Calendar, Settings, Sparkles, Target } from 'lucide-react';
 
-export type ActiveTab = 'home' | 'library' | 'calendar' | 'settings';
+export type ActiveTab = 'home' | 'profile' | 'calendar' | 'library' | 'ai' | 'settings';
 
 interface NavbarProps {
   activeTab: ActiveTab;
@@ -10,15 +10,16 @@ interface NavbarProps {
 
 export const Navbar: React.FC<NavbarProps> = ({ activeTab, onChangeTab }) => {
   const tabs = [
-    { key: 'home' as ActiveTab, label: '訓練組合', icon: Layers },
-    { key: 'library' as ActiveTab, label: '動作庫', icon: Dumbbell },
-    { key: 'calendar' as ActiveTab, label: '打卡日曆', icon: Calendar },
-    { key: 'settings' as ActiveTab, label: '設定', icon: Settings },
+    { key: 'home' as ActiveTab, label: '組合', icon: Layers },
+    { key: 'library' as ActiveTab, label: '動作', icon: Dumbbell },
+    { key: 'profile' as ActiveTab, label: '個人', icon: Target },
+    { key: 'calendar' as ActiveTab, label: '日曆', icon: Calendar },
+    { key: 'ai' as ActiveTab, label: 'AI', icon: Sparkles },
   ];
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-stone-200/80 pb-safe shadow-lg">
-      <div className="max-w-md mx-auto px-4 h-16 flex items-center justify-around">
+      <div className="max-w-md mx-auto px-2 h-16 flex items-center justify-around">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.key;
@@ -48,3 +49,4 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onChangeTab }) => {
     </nav>
   );
 };
+

@@ -11,7 +11,8 @@ import {
   Sparkles,
   Check,
   X,
-  PlayCircle
+  PlayCircle,
+  Star
 } from 'lucide-react';
 import { ExerciseItem } from '../../types/workout';
 import { parseVideoUrl } from '../../utils/video';
@@ -22,6 +23,7 @@ interface ExerciseLibraryModalProps {
   onAddExercise: (ex: Omit<ExerciseItem, 'id' | 'createdAt'>) => void;
   onUpdateExercise: (ex: ExerciseItem) => void;
   onDeleteExercise: (id: string) => void;
+  onToggleFavoriteExercise?: (id: string) => void;
   onClose?: () => void;
 }
 
@@ -48,13 +50,17 @@ export const ExerciseLibraryModal: React.FC<ExerciseLibraryModalProps> = ({
   onAddExercise,
   onUpdateExercise,
   onDeleteExercise,
+  onToggleFavoriteExercise,
   onClose,
 }) => {
   const [activeCategory, setActiveCategory] = useState<ExerciseItem['category'] | 'all'>('all');
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [editingExercise, setEditingExercise] = useState<ExerciseItem | null>(null);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [previewVideo, setPreviewVideo] = useState<{ url: string; title: string } | null>(null);
+
+  const favoriteCount = exercises.filter((e) => e.isFavorite).length;
 
   // Form states
   const [formName, setFormName] = useState('');
@@ -128,11 +134,12 @@ export const ExerciseLibraryModal: React.FC<ExerciseLibraryModalProps> = ({
   // Filter exercises
   const filtered = exercises.filter((ex) => {
     const matchesCat = activeCategory === 'all' || ex.category === activeCategory;
+    const matchesFav = !showFavoritesOnly || Boolean(ex.isFavorite);
     const matchesSearch =
       !searchQuery.trim() ||
       ex.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (ex.description && ex.description.toLowerCase().includes(searchQuery.toLowerCase()));
-    return matchesCat && matchesSearch;
+    return matchesCat && matchesFav && matchesSearch;
   });
 
   return (
@@ -159,7 +166,7 @@ export const ExerciseLibraryModal: React.FC<ExerciseLibraryModalProps> = ({
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="搜尋動作名稱或動作說明..."
+          placeholder="快捷搜尋動作名稱或動作說明..."
           className="w-full pl-10 pr-4 py-2.5 bg-white rounded-2xl border border-stone-200 text-xs text-stone-800 placeholder-stone-400 focus:outline-hidden focus:border-amber-400 shadow-2xs"
         />
         {searchQuery && (
@@ -172,14 +179,27 @@ export const ExerciseLibraryModal: React.FC<ExerciseLibraryModalProps> = ({
         )}
       </div>
 
-      {/* Category Pills */}
+      {/* Category & Favorite Pills */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-2 scrollbar-none mb-3">
+        {/* Favorite Quick Filter Pill */}
+        <button
+          onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
+          className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1 shrink-0 ${
+            showFavoritesOnly
+              ? 'bg-amber-500 text-white shadow-2xs ring-2 ring-amber-300'
+              : 'bg-white text-stone-700 border border-stone-200 hover:bg-stone-50'
+          }`}
+        >
+          <Star className={`w-3.5 h-3.5 ${showFavoritesOnly ? 'fill-white text-white' : 'text-amber-500 fill-amber-400'}`} />
+          已收藏 ({favoriteCount})
+        </button>
+
         {CATEGORIES.map((cat) => (
           <button
             key={cat.key}
             onClick={() => setActiveCategory(cat.key)}
             className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
-              activeCategory === cat.key
+              activeCategory === cat.key && !showFavoritesOnly
                 ? 'bg-amber-100 text-amber-900 border border-amber-300/80 shadow-2xs'
                 : 'bg-white text-stone-600 border border-stone-200 hover:bg-stone-50'
             }`}
@@ -195,7 +215,9 @@ export const ExerciseLibraryModal: React.FC<ExerciseLibraryModalProps> = ({
           <div className="text-center py-12 bg-white rounded-3xl border border-stone-200/70 p-6">
             <Dumbbell className="w-8 h-8 text-stone-300 mx-auto mb-2" />
             <p className="text-sm font-medium text-stone-600">未找到符合條件的動作</p>
-            <p className="text-xs text-stone-400 mt-1">點擊上方「新增動作」建立屬於你的專屬訓練庫</p>
+            <p className="text-xs text-stone-400 mt-1">
+              {showFavoritesOnly ? '您尚未收藏動作，點擊卡片右上角的星星即可加入收藏！' : '點擊上方「新增動作」建立屬於你的專屬訓練庫'}
+            </p>
           </div>
         ) : (
           filtered.map((item) => (
@@ -228,9 +250,22 @@ export const ExerciseLibraryModal: React.FC<ExerciseLibraryModalProps> = ({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
                     <h4 className="font-bold text-sm text-stone-900 truncate">{item.name}</h4>
-                    <span className="text-[10px] font-medium text-stone-500 bg-stone-100 px-2 py-0.5 rounded-full">
-                      {CATEGORIES.find((c) => c.key === item.category)?.label || item.category}
-                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        onClick={() => onToggleFavoriteExercise?.(item.id)}
+                        className={`p-1 rounded-lg transition-all active:scale-90 ${
+                          item.isFavorite
+                            ? 'text-amber-500 bg-amber-50 ring-1 ring-amber-200'
+                            : 'text-stone-300 hover:text-amber-400 hover:bg-stone-100'
+                        }`}
+                        title={item.isFavorite ? '取消收藏' : '加入收藏'}
+                      >
+                        <Star className={`w-3.5 h-3.5 ${item.isFavorite ? 'fill-amber-400 text-amber-500' : ''}`} />
+                      </button>
+                      <span className="text-[10px] font-medium text-stone-500 bg-stone-100 px-2 py-0.5 rounded-full">
+                        {CATEGORIES.find((c) => c.key === item.category)?.label || item.category}
+                      </span>
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-2 text-xs text-stone-500 mt-1">

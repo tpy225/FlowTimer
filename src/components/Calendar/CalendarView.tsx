@@ -11,14 +11,21 @@ import {
   Plus,
   Trash2,
   Smile,
-  Activity
+  Activity,
+  Scale,
+  Edit3,
+  X
 } from 'lucide-react';
-import { WorkoutLog, WorkoutRoutine } from '../../types/workout';
+import { WorkoutLog, WorkoutRoutine, WeightLog } from '../../types/workout';
 import { formatDateKey, formatTime } from '../../utils/storage';
+import { WeightTrendChart } from './WeightTrendChart';
 
 interface CalendarViewProps {
   logs: WorkoutLog[];
   routines: WorkoutRoutine[];
+  weightLogs: WeightLog[];
+  onSaveWeightLog: (date: string, weightKg: number, note?: string) => void;
+  onDeleteWeightLog?: (id: string) => void;
   onAddManualLog?: (log: Omit<WorkoutLog, 'id'>) => void;
   onDeleteLog?: (id: string) => void;
 }
@@ -26,11 +33,19 @@ interface CalendarViewProps {
 export const CalendarView: React.FC<CalendarViewProps> = ({
   logs,
   routines,
+  weightLogs,
+  onSaveWeightLog,
+  onDeleteWeightLog,
   onAddManualLog,
   onDeleteLog,
 }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDateKey, setSelectedDateKey] = useState<string>(formatDateKey(new Date()));
+
+  // Weight edit modal / drawer state
+  const [isEditingWeight, setIsEditingWeight] = useState(false);
+  const [inputWeight, setInputWeight] = useState<number>(52.0);
+  const [inputWeightNote, setInputWeightNote] = useState<string>('');
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth(); // 0-indexed
@@ -59,6 +74,12 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
       logsByDate[log.date] = [];
     }
     logsByDate[log.date].push(log);
+  });
+
+  // Map weight logs by dateKey
+  const weightByDate: Record<string, WeightLog> = {};
+  weightLogs.forEach((w) => {
+    weightByDate[w.date] = w;
   });
 
   // Calculate monthly stats
@@ -96,17 +117,40 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
 
   const streakDays = calculateStreak();
   const selectedLogs = logsByDate[selectedDateKey] || [];
+  const selectedWeightLog = weightByDate[selectedDateKey];
+
+  // Open weight editing dialog
+  const handleOpenWeightEditor = () => {
+    if (selectedWeightLog) {
+      setInputWeight(selectedWeightLog.weightKg);
+      setInputWeightNote(selectedWeightLog.note || '');
+    } else {
+      // Default to the latest recorded weight or 52.0
+      const lastRecorded = weightLogs[weightLogs.length - 1];
+      setInputWeight(lastRecorded ? lastRecorded.weightKg : 52.0);
+      setInputWeightNote('');
+    }
+    setIsEditingWeight(true);
+  };
+
+  const handleSaveWeight = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (inputWeight > 0) {
+      onSaveWeightLog(selectedDateKey, Number(inputWeight.toFixed(1)), inputWeightNote.trim() || undefined);
+    }
+    setIsEditingWeight(false);
+  };
 
   return (
-    <div className="max-w-md mx-auto px-4 py-4 pb-24">
+    <div className="max-w-md mx-auto px-4 py-4 pb-28 space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-stone-900 tracking-tight flex items-center gap-1.5">
             <CalendarIcon className="w-5 h-5 text-amber-600" />
-            訓練打卡日曆
+            訓練打卡與體態日曆
           </h2>
-          <p className="text-xs text-stone-500 mt-0.5">每次完成組合自動打卡，記錄堅持的每一天</p>
+          <p className="text-xs text-stone-500 mt-0.5">每次完成自動打卡，可編輯每日體重觀察趨勢</p>
         </div>
 
         <button
@@ -118,7 +162,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
       </div>
 
       {/* Monthly Overview Badges */}
-      <div className="grid grid-cols-3 gap-2 mb-4">
+      <div className="grid grid-cols-3 gap-2">
         <div className="bg-white p-3 rounded-2xl border border-stone-200/80 shadow-2xs text-center">
           <div className="flex items-center justify-center gap-1 text-[11px] text-amber-700 font-semibold mb-0.5">
             <Flame className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
@@ -150,7 +194,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
       </div>
 
       {/* Calendar Card */}
-      <div className="bg-white rounded-3xl p-4 border border-stone-200/80 shadow-xs mb-4">
+      <div className="bg-white rounded-3xl p-4 border border-stone-200/80 shadow-xs">
         {/* Month Selector */}
         <div className="flex items-center justify-between mb-3 px-1">
           <h3 className="font-bold text-sm text-stone-800">
@@ -189,7 +233,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
         <div className="grid grid-cols-7 gap-1 text-center">
           {/* Empty cells before month starts */}
           {Array.from({ length: firstDayOfMonth }).map((_, i) => (
-            <div key={`empty-${i}`} className="h-10" />
+            <div key={`empty-${i}`} className="h-11" />
           ))}
 
           {/* Days */}
@@ -197,6 +241,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
             const dayNum = i + 1;
             const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
             const hasLogs = Boolean(logsByDate[dateStr]?.length);
+            const dayWeight = weightByDate[dateStr];
             const isSelected = selectedDateKey === dateStr;
             const isToday = formatDateKey(new Date()) === dateStr;
 
@@ -214,33 +259,118 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
               >
                 <span>{dayNum}</span>
 
-                {/* Workout check-in indicator dot */}
-                {hasLogs && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-0.5 shadow-2xs" />
-                )}
+                {/* Status indicator dots */}
+                <div className="flex items-center gap-0.5 mt-0.5">
+                  {/* Workout check-in indicator (green) */}
+                  {hasLogs && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-2xs" title="已完成訓練" />
+                  )}
+                  {/* Weight recorded indicator (amber) */}
+                  {dayWeight && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shadow-2xs" title="已記錄體重" />
+                  )}
+                </div>
               </button>
             );
           })}
         </div>
+
+        <div className="flex items-center justify-end gap-3 pt-2 text-[10px] text-stone-400 border-t border-stone-100 mt-2">
+          <span className="flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" /> 訓練打卡
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" /> 體重記錄
+          </span>
+        </div>
       </div>
 
+      {/* Selected Date: Weight Logging & Details Card */}
+      <div className="bg-white rounded-3xl p-4 border border-stone-200/80 shadow-2xs">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center">
+              <Scale className="w-3.5 h-3.5" />
+            </div>
+            <div>
+              <span className="text-[10px] text-stone-400 block font-mono leading-none">
+                {selectedDateKey}
+              </span>
+              <h4 className="font-bold text-xs text-stone-900 mt-0.5">當日體重記錄</h4>
+            </div>
+          </div>
+
+          <button
+            onClick={handleOpenWeightEditor}
+            className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl transition-all active:scale-95 shadow-2xs"
+          >
+            {selectedWeightLog ? <Edit3 className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
+            <span>{selectedWeightLog ? '修改體重' : '記錄當日體重'}</span>
+          </button>
+        </div>
+
+        {selectedWeightLog ? (
+          <div className="mt-3 p-3 bg-stone-50/80 rounded-2xl border border-stone-200/60 flex items-center justify-between">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-2xl font-extrabold text-stone-900 font-mono">
+                {selectedWeightLog.weightKg.toFixed(1)}
+              </span>
+              <span className="text-xs text-stone-500 font-medium">kg</span>
+              {selectedWeightLog.note && (
+                <span className="text-xs text-stone-500 italic ml-2 pl-2 border-l border-stone-200">
+                  “{selectedWeightLog.note}”
+                </span>
+              )}
+            </div>
+
+            {onDeleteWeightLog && (
+              <button
+                onClick={() => {
+                  if (window.confirm('確定要刪除該日期的體重記錄嗎？')) {
+                    onDeleteWeightLog(selectedWeightLog.id);
+                  }
+                }}
+                className="p-1 text-stone-300 hover:text-red-500 transition-colors"
+                title="刪除體重記錄"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        ) : (
+          <div
+            onClick={handleOpenWeightEditor}
+            className="mt-3 py-3 px-4 bg-stone-50/50 hover:bg-stone-50 rounded-2xl border border-dashed border-stone-200 flex items-center justify-between cursor-pointer transition-colors"
+          >
+            <span className="text-xs text-stone-400">當日尚未記錄體重</span>
+            <span className="text-xs font-semibold text-amber-800">＋ 點擊填寫</span>
+          </div>
+        )}
+      </div>
+
+      {/* Bottom Chart: Weight Trend and Variation */}
+      <WeightTrendChart
+        weightLogs={weightLogs}
+        onSelectDateToLog={(date) => setSelectedDateKey(date)}
+      />
+
       {/* Selected Day's Workout Details */}
-      <div className="space-y-3">
+      <div className="space-y-3 pt-1">
         <div className="flex items-center justify-between px-1">
           <h4 className="text-xs font-bold text-stone-700 flex items-center gap-1.5">
             <Activity className="w-3.5 h-3.5 text-stone-400" />
             {selectedDateKey} 訓練打卡記錄
           </h4>
           <span className="text-[11px] text-stone-400">
-            {selectedLogs.length > 0 ? `完成 ${selectedLogs.length} 項訓練` : '當日無打卡'}
+            {selectedLogs.length > 0 ? `完成 ${selectedLogs.length} 項訓練` : '當日無訓練'}
           </span>
         </div>
 
         {selectedLogs.length === 0 ? (
-          <div className="bg-white rounded-2xl p-6 text-center border border-stone-200/70 text-stone-400">
-            <Smile className="w-8 h-8 mx-auto mb-1.5 text-stone-300" />
-            <p className="text-xs font-medium text-stone-500">這一天還沒有運動打卡</p>
-            <p className="text-[11px] text-stone-400 mt-0.5">挑選一個組合開始運動，完成後將自動記錄在此！</p>
+          <div className="bg-white rounded-2xl p-5 text-center border border-stone-200/70 text-stone-400">
+            <Smile className="w-7 h-7 mx-auto mb-1 text-stone-300" />
+            <p className="text-xs font-medium text-stone-500">這一天尚未有訓練打卡記錄</p>
+            <p className="text-[11px] text-stone-400 mt-0.5">完成任意組合訓練後，將會自動在此打卡！</p>
           </div>
         ) : (
           selectedLogs.map((log) => (
@@ -308,6 +438,113 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
           ))
         )}
       </div>
+
+      {/* Edit Weight Dialog Modal */}
+      {isEditingWeight && (
+        <div className="fixed inset-0 z-50 bg-stone-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl border border-stone-200 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-stone-100 mb-3">
+              <div className="flex items-center gap-2">
+                <Scale className="w-4 h-4 text-amber-600" />
+                <h4 className="font-bold text-sm text-stone-900">
+                  記錄 {selectedDateKey} 體重
+                </h4>
+              </div>
+              <button
+                onClick={() => setIsEditingWeight(false)}
+                className="p-1 text-stone-400 hover:text-stone-700 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveWeight} className="space-y-4 text-xs text-stone-700">
+              {/* Weight Stepper & Input */}
+              <div>
+                <label className="block font-semibold mb-1.5 text-center text-xs text-stone-600">
+                  體重 (kg)
+                </label>
+                <div className="flex items-center justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setInputWeight((prev) => Math.max(30, Number((prev - 0.1).toFixed(1))))}
+                    className="w-10 h-10 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold text-base active:scale-95 transition-all"
+                  >
+                    -
+                  </button>
+
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="30"
+                      max="250"
+                      required
+                      value={inputWeight}
+                      onChange={(e) => setInputWeight(Number(e.target.value))}
+                      className="w-32 py-2.5 px-3 rounded-2xl border-2 border-amber-300 bg-amber-50/50 text-center font-mono font-extrabold text-2xl text-stone-900 focus:outline-hidden focus:border-amber-500"
+                    />
+                    <span className="text-[10px] text-stone-400 absolute right-2 bottom-3">kg</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setInputWeight((prev) => Math.min(250, Number((prev + 0.1).toFixed(1))))}
+                    className="w-10 h-10 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold text-base active:scale-95 transition-all"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              {/* Quick adjustment pills */}
+              <div className="flex justify-center gap-1.5">
+                {[-0.5, -0.2, +0.2, +0.5].map((delta) => (
+                  <button
+                    key={delta}
+                    type="button"
+                    onClick={() => setInputWeight((prev) => Number((prev + delta).toFixed(1)))}
+                    className="text-[10px] font-mono px-2 py-1 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-600 font-medium"
+                  >
+                    {delta > 0 ? `+${delta}` : delta}
+                  </button>
+                ))}
+              </div>
+
+              {/* Optional note */}
+              <div>
+                <label className="block font-semibold mb-1 text-[11px] text-stone-600">
+                  備註（選填，如：晨起空腹、運動後）
+                </label>
+                <input
+                  type="text"
+                  value={inputWeightNote}
+                  onChange={(e) => setInputWeightNote(e.target.value)}
+                  placeholder="例如：早起空腹、水分充足"
+                  className="w-full p-2.5 rounded-xl border border-stone-200 bg-stone-50 focus:bg-white focus:outline-hidden focus:border-amber-400 text-xs"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-2 border-t border-stone-100">
+                <button
+                  type="button"
+                  onClick={() => setIsEditingWeight(false)}
+                  className="flex-1 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl font-medium"
+                >
+                  取消
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 bg-stone-900 hover:bg-black text-white rounded-xl font-medium shadow-xs"
+                >
+                  儲存體重
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+

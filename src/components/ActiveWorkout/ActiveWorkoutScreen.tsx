@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, RefreshCw, AlertCircle } from 'lucide-react';
-import { WorkoutRoutine, WorkoutPhase, UserSettings, RoutineExerciseItem, WorkoutLog } from '../../types/workout';
+import { WorkoutRoutine, WorkoutPhase, UserSettings, RoutineExerciseItem, WorkoutLog, WorkoutGoalPlan } from '../../types/workout';
 import { TimerDisplay } from './TimerDisplay';
 import { TimelineList } from './TimelineList';
 import { CompletionModal } from './CompletionModal';
@@ -15,6 +15,7 @@ interface ActiveWorkoutScreenProps {
   onGoToCalendar: () => void;
   onUpdateSettings: (newSettings: Partial<UserSettings>) => void;
   onUpdateLogNote: (logId: string, note: string, rating: number) => void;
+  goalPlan?: WorkoutGoalPlan;
 }
 
 export const ActiveWorkoutScreen: React.FC<ActiveWorkoutScreenProps> = ({
@@ -24,6 +25,7 @@ export const ActiveWorkoutScreen: React.FC<ActiveWorkoutScreenProps> = ({
   onGoToCalendar,
   onUpdateSettings,
   onUpdateLogNote,
+  goalPlan,
 }) => {
   // Current position
   const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
@@ -425,6 +427,7 @@ export const ActiveWorkoutScreen: React.FC<ActiveWorkoutScreenProps> = ({
           createdLogId={createdLogId}
           onGoToCalendar={onGoToCalendar}
           onBackToHome={onExit}
+          goalPlan={goalPlan}
         />
       )}
 

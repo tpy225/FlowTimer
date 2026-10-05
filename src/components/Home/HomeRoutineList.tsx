@@ -12,69 +12,104 @@ import {
   Search,
   Filter,
   ArrowRight,
-  Video
+  Video,
+  Star,
+  X
 } from 'lucide-react';
-import { WorkoutRoutine } from '../../types/workout';
+import { WorkoutRoutine, UserProfile } from '../../types/workout';
 import { calculateRoutineDuration, formatTime } from '../../utils/storage';
 
 interface HomeRoutineListProps {
   routines: WorkoutRoutine[];
   streakDays: number;
   todayCompletedCount: number;
+  profile: UserProfile;
+  onToggleFavoriteRoutine: (routineId: string) => void;
   onSelectRoutineToStart: (routine: WorkoutRoutine) => void;
   onEditRoutine: (routine: WorkoutRoutine) => void;
   onDeleteRoutine: (id: string) => void;
   onCreateNewRoutine: () => void;
   onOpenVideoPreview: (url: string, title: string) => void;
+  onGoToAICoach?: () => void;
 }
 
 export const HomeRoutineList: React.FC<HomeRoutineListProps> = ({
   routines,
   streakDays,
   todayCompletedCount,
+  profile,
+  onToggleFavoriteRoutine,
   onSelectRoutineToStart,
   onEditRoutine,
   onDeleteRoutine,
   onCreateNewRoutine,
   onOpenVideoPreview,
+  onGoToAICoach,
 }) => {
   const [filterTag, setFilterTag] = useState<string>('all');
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Extract all unique tags
   const allTags = ['all', ...Array.from(new Set(routines.map((r) => r.tag).filter(Boolean)))];
+  const favoriteCount = routines.filter((r) => r.isFavorite).length;
 
   const filtered = routines.filter((r) => {
     const matchesTag = filterTag === 'all' || r.tag === filterTag;
+    const matchesFav = !showFavoritesOnly || Boolean(r.isFavorite);
     const matchesSearch =
       !searchQuery.trim() ||
       r.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      r.description.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesTag && matchesSearch;
+      r.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      r.tag.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesTag && matchesFav && matchesSearch;
   });
 
   return (
     <div className="max-w-md mx-auto px-4 py-4 pb-28">
-      {/* Top Welcome / Daily Motivation Banner */}
-      <div className="bg-gradient-to-br from-amber-100/70 via-orange-50/50 to-emerald-50/60 rounded-3xl p-5 border border-amber-200/60 shadow-xs mb-5">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-white/80 text-amber-900 border border-amber-200/50 shadow-2xs">
-            🌸 舒緩與力量
-          </span>
-          <div className="flex items-center gap-1 text-xs font-bold text-amber-800 bg-amber-200/50 px-2.5 py-0.5 rounded-full">
-            <Flame className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
-            連續 {streakDays} 天打卡
+      {/* Sleek Compact Top Bar on Home */}
+      <div className="flex items-center justify-between mb-4 bg-white/80 p-3 rounded-2xl border border-stone-200/80 shadow-2xs">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-xl overflow-hidden border-2 border-amber-200/80 shrink-0 shadow-2xs">
+            <img src={profile.avatar} alt={profile.name} className="w-full h-full object-cover" />
+          </div>
+          <div>
+            <div className="flex items-center gap-1.5">
+              <span className="font-bold text-xs text-stone-900">{profile.name}</span>
+              <span className="text-[10px] text-stone-400">· 專注當下</span>
+            </div>
+            <div className="text-[10px] text-stone-500 mt-0.5">
+              {todayCompletedCount > 0
+                ? `今日已打卡 ${todayCompletedCount} 組訓練 ✨`
+                : '挑選適合當下狀態的訓練組合開始吧！'}
+            </div>
           </div>
         </div>
 
-        <h1 className="text-xl font-extrabold text-stone-900 tracking-tight">
-          選擇一組訓練，開始專注呼吸
-        </h1>
-        <p className="text-xs text-stone-600 mt-1 leading-relaxed">
-          {todayCompletedCount > 0
-            ? `太棒了！今天已完成 ${todayCompletedCount} 項訓練打卡，隨時可以再來一組。`
-            : '挑選適合當下狀態的訓練組合，點擊即可開啟大字計時與語音引導。'}
-        </p>
+        <div className="flex items-center gap-1 text-[11px] font-bold text-amber-900 bg-amber-100/90 px-2.5 py-1 rounded-full border border-amber-200/80 shrink-0">
+          <Flame className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+          {streakDays} 天打卡
+        </div>
+      </div>
+
+      {/* Search Input Bar for Quick Search */}
+      <div className="relative mb-3">
+        <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="快捷搜索訓練組合名稱、說明或標籤..."
+          className="w-full pl-10 pr-8 py-2.5 rounded-2xl border border-stone-200 bg-white text-xs focus:outline-hidden focus:border-amber-400 placeholder:text-stone-400 shadow-2xs"
+        />
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery('')}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 p-0.5"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
 
       {/* Routine Section Header */}
@@ -92,14 +127,27 @@ export const HomeRoutineList: React.FC<HomeRoutineListProps> = ({
         </button>
       </div>
 
-      {/* Filter Tag Pills */}
+      {/* Filter Tag & Favorite Pills */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-2 scrollbar-none mb-3">
+        {/* Favorite Quick Filter Pill */}
+        <button
+          onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
+          className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1 shrink-0 ${
+            showFavoritesOnly
+              ? 'bg-amber-500 text-white shadow-2xs ring-2 ring-amber-300'
+              : 'bg-white text-stone-700 border border-stone-200 hover:bg-stone-50'
+          }`}
+        >
+          <Star className={`w-3.5 h-3.5 ${showFavoritesOnly ? 'fill-white text-white' : 'text-amber-500 fill-amber-400'}`} />
+          已收藏 ({favoriteCount})
+        </button>
+
         {allTags.map((tag) => (
           <button
             key={tag}
             onClick={() => setFilterTag(tag)}
             className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
-              filterTag === tag
+              filterTag === tag && !showFavoritesOnly
                 ? 'bg-stone-900 text-white shadow-2xs'
                 : 'bg-white text-stone-600 border border-stone-200 hover:bg-stone-50'
             }`}
@@ -111,51 +159,80 @@ export const HomeRoutineList: React.FC<HomeRoutineListProps> = ({
 
       {/* Routine Cards List */}
       <div className="space-y-4">
-        {filtered.map((routine) => {
-          const durationSec = calculateRoutineDuration(routine);
-          const totalSets = routine.exercises.reduce((acc, ex) => acc + (ex.sets || 1), 0);
+        {filtered.length === 0 ? (
+          <div className="p-8 text-center bg-white rounded-3xl border border-dashed border-stone-200 text-stone-400">
+            <Star className="w-8 h-8 mx-auto mb-2 text-stone-300" />
+            <h4 className="font-bold text-sm text-stone-700">未找到符合條件的組合</h4>
+            <p className="text-xs text-stone-400 mt-1">
+              {showFavoritesOnly ? '您尚未收藏此類別的組合，點擊卡片右上角星星即可加入收藏！' : '請嘗試清除搜尋關鍵字或切換標籤分類。'}
+            </p>
+          </div>
+        ) : (
+          filtered.map((routine) => {
+            const durationSec = calculateRoutineDuration(routine);
+            const totalSets = routine.exercises.reduce((acc, ex) => acc + (ex.sets || 1), 0);
 
-          return (
-            <div
-              key={routine.id}
-              className="bg-white rounded-3xl overflow-hidden border border-stone-200/80 shadow-xs hover:shadow-md transition-all group"
-            >
-              {/* Cover Image or Header Banner */}
-              <div className="relative h-32 w-full overflow-hidden bg-stone-200">
-                {routine.coverImage ? (
-                  <img
-                    src={routine.coverImage}
-                    alt={routine.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    loading="lazy"
-                  />
-                ) : (
-                  <div className="w-full h-full bg-gradient-to-r from-amber-100 to-emerald-100" />
-                )}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-
-                {/* Badges on image */}
-                <div className="absolute top-3 left-3 flex items-center gap-2">
-                  <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-white/90 backdrop-blur-xs text-stone-800 shadow-2xs">
-                    {routine.tag}
-                  </span>
-                  {routine.isPreset && (
-                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-500 text-white">
-                      推薦預設
-                    </span>
+            return (
+              <div
+                key={routine.id}
+                className="bg-white rounded-3xl overflow-hidden border border-stone-200/80 shadow-xs hover:shadow-md transition-all group relative"
+              >
+                {/* Cover Image or Header Banner */}
+                <div className="relative h-32 w-full overflow-hidden bg-stone-200">
+                  {routine.coverImage ? (
+                    <img
+                      src={routine.coverImage}
+                      alt={routine.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-r from-amber-100 to-emerald-100" />
                   )}
-                </div>
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
 
-                <div className="absolute bottom-2.5 left-3 right-3 flex items-end justify-between text-white">
-                  <div>
-                    <h3 className="font-bold text-lg drop-shadow-xs">{routine.title}</h3>
+                  {/* Badges on image */}
+                  <div className="absolute top-3 left-3 flex items-center gap-2">
+                    <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-white/90 backdrop-blur-xs text-stone-800 shadow-2xs">
+                      {routine.tag}
+                    </span>
+                    {routine.isPreset && (
+                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-500 text-white">
+                        推薦預設
+                      </span>
+                    )}
                   </div>
-                  <div className="flex items-center gap-1.5 text-xs font-semibold bg-black/40 backdrop-blur-xs px-2.5 py-1 rounded-xl">
-                    <Clock className="w-3.5 h-3.5 text-amber-300" />
-                    <span className="font-mono">{formatTime(durationSec)}</span>
+
+                  {/* Favorite Toggle Button on Routine Cover */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleFavoriteRoutine(routine.id);
+                    }}
+                    className={`absolute top-3 right-3 p-2 rounded-full backdrop-blur-md transition-all active:scale-90 z-10 ${
+                      routine.isFavorite
+                        ? 'bg-white text-amber-500 shadow-md ring-1 ring-amber-300'
+                        : 'bg-black/35 text-white/80 hover:bg-black/55 hover:text-white'
+                    }`}
+                    title={routine.isFavorite ? '取消收藏' : '加入收藏'}
+                  >
+                    <Star
+                      className={`w-4 h-4 transition-transform ${
+                        routine.isFavorite ? 'fill-amber-400 text-amber-500 scale-110' : ''
+                      }`}
+                    />
+                  </button>
+
+                  <div className="absolute bottom-2.5 left-3 right-3 flex items-end justify-between text-white pr-2">
+                    <div>
+                      <h3 className="font-bold text-lg drop-shadow-xs">{routine.title}</h3>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs font-semibold bg-black/40 backdrop-blur-xs px-2.5 py-1 rounded-xl">
+                      <Clock className="w-3.5 h-3.5 text-amber-300" />
+                      <span className="font-mono">{formatTime(durationSec)}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
 
               {/* Card Body */}
               <div className="p-4">
@@ -227,7 +304,7 @@ export const HomeRoutineList: React.FC<HomeRoutineListProps> = ({
               </div>
             </div>
           );
-        })}
+        }))}
       </div>
     </div>
   );
