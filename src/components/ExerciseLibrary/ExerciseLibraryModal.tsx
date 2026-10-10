@@ -17,6 +17,7 @@ import {
 import { ExerciseItem } from '../../types/workout';
 import { parseVideoUrl } from '../../utils/video';
 import { FloatingVideoPlayer } from '../VideoPlayer/FloatingVideoPlayer';
+import { useConfirm } from '../ui/ConfirmProvider';
 
 interface ExerciseLibraryModalProps {
   exercises: ExerciseItem[];
@@ -53,6 +54,7 @@ export const ExerciseLibraryModal: React.FC<ExerciseLibraryModalProps> = ({
   onToggleFavoriteExercise,
   onClose,
 }) => {
+  const confirm = useConfirm();
   const [activeCategory, setActiveCategory] = useState<ExerciseItem['category'] | 'all'>('all');
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -144,39 +146,33 @@ export const ExerciseLibraryModal: React.FC<ExerciseLibraryModalProps> = ({
 
   return (
     <div className="max-w-md mx-auto px-4 py-4 pb-24">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h2 className="text-xl font-bold text-stone-900 tracking-tight">動作項目庫</h2>
-          <p className="text-xs text-stone-500 mt-0.5">自訂單個訓練項目的時間、組數與示範影片</p>
+      {/* Search Input + Add button on one row */}
+      <div className="relative mb-3 flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="快捷搜尋動作名稱或動作說明..."
+            className="w-full pl-10 pr-9 py-2.5 bg-white rounded-2xl border border-stone-200 text-xs text-stone-800 placeholder-stone-400 focus:outline-hidden focus:border-amber-400 shadow-2xs"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
         <button
           onClick={openCreateForm}
-          className="flex items-center gap-1.5 px-3.5 py-2 bg-stone-900 hover:bg-black text-white text-xs font-semibold rounded-2xl shadow-sm transition-all active:scale-95"
+          className="flex items-center gap-1 px-3 py-2.5 bg-stone-900 hover:bg-black text-white text-xs font-semibold rounded-2xl shadow-sm transition-all active:scale-95 shrink-0"
         >
           <Plus className="w-4 h-4" />
-          新增動作
+          新增
         </button>
-      </div>
-
-      {/* Search Input */}
-      <div className="relative mb-3">
-        <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="快捷搜尋動作名稱或動作說明..."
-          className="w-full pl-10 pr-4 py-2.5 bg-white rounded-2xl border border-stone-200 text-xs text-stone-800 placeholder-stone-400 focus:outline-hidden focus:border-amber-400 shadow-2xs"
-        />
-        {searchQuery && (
-          <button
-            onClick={() => setSearchQuery('')}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        )}
       </div>
 
       {/* Category & Favorite Pills */}
@@ -307,10 +303,9 @@ export const ExerciseLibraryModal: React.FC<ExerciseLibraryModalProps> = ({
                     <Edit2 className="w-3.5 h-3.5" />
                   </button>
                   <button
-                    onClick={() => {
-                      if (window.confirm(`確定要刪除動作「${item.name}」嗎？`)) {
-                        onDeleteExercise(item.id);
-                      }
+                    onClick={async () => {
+                      const ok = await confirm(`確定要刪除動作「${item.name}」嗎？`, { title: '刪除動作' });
+                      if (ok) onDeleteExercise(item.id);
                     }}
                     className="p-1.5 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                     title="刪除動作"

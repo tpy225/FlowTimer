@@ -31,6 +31,7 @@ import { WeightTrendChart } from '../Calendar/WeightTrendChart';
 import { GoalEditorModal } from '../Goal/GoalEditorModal';
 import { calculateGoalProgress, getStartOfCurrentWeek } from '../../utils/goalTracker';
 import { formatDateKey } from '../../utils/storage';
+import { useConfirm } from '../ui/ConfirmProvider';
 
 interface ProfileGoalsViewProps {
   profile: UserProfile;
@@ -65,6 +66,7 @@ export const ProfileGoalsView: React.FC<ProfileGoalsViewProps> = ({
   onSaveWeightLog,
   onDeleteWeightLog,
 }) => {
+  const confirm = useConfirm();
   // Goals tab: 'active' vs 'history'
   const [goalTab, setGoalTab] = useState<'active' | 'history'>('active');
 
@@ -233,10 +235,13 @@ export const ProfileGoalsView: React.FC<ProfileGoalsViewProps> = ({
                           <Edit3 className="w-3.5 h-3.5" />
                         </button>
                         <button
-                          onClick={() => {
-                            if (window.confirm(`確定將【${plan.title}】標記為完成並歸檔至歷史記錄嗎？`)) {
-                              onToggleGoalPlanStatus(plan.id, false);
-                            }
+                          onClick={async () => {
+                            const ok = await confirm(`確定將【${plan.title}】標記為完成並歸檔至歷史記錄嗎？`, {
+                              title: '完成並歸檔',
+                              confirmText: '歸檔',
+                              danger: false,
+                            });
+                            if (ok) onToggleGoalPlanStatus(plan.id, false);
                           }}
                           className="p-1.5 text-stone-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
                           title="完成目標並歸檔"
@@ -244,10 +249,9 @@ export const ProfileGoalsView: React.FC<ProfileGoalsViewProps> = ({
                           <CheckCircle2 className="w-3.5 h-3.5" />
                         </button>
                         <button
-                          onClick={() => {
-                            if (window.confirm(`確定要刪除目標【${plan.title}】嗎？`)) {
-                              onDeleteGoalPlan(plan.id);
-                            }
+                          onClick={async () => {
+                            const ok = await confirm(`確定要刪除目標【${plan.title}】嗎？`, { title: '刪除目標' });
+                            if (ok) onDeleteGoalPlan(plan.id);
                           }}
                           className="p-1.5 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                           title="刪除目標"
@@ -416,10 +420,9 @@ export const ProfileGoalsView: React.FC<ProfileGoalsViewProps> = ({
                         <RotateCcw className="w-3 h-3" /> 重啟
                       </button>
                       <button
-                        onClick={() => {
-                          if (window.confirm(`確定要刪除歷史目標【${plan.title}】嗎？`)) {
-                            onDeleteGoalPlan(plan.id);
-                          }
+                        onClick={async () => {
+                          const ok = await confirm(`確定要刪除歷史目標【${plan.title}】嗎？`, { title: '刪除歷史目標' });
+                          if (ok) onDeleteGoalPlan(plan.id);
                         }}
                         className="p-1.5 text-stone-300 hover:text-red-500 transition-colors"
                         title="刪除"

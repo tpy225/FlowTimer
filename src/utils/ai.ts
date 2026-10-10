@@ -247,6 +247,14 @@ export function saveChatHistory(history: ChatMessage[]): void {
   localStorage.setItem(STORAGE_KEY_AI_CHAT, JSON.stringify(history));
 }
 
+// Remove all stored chat messages; AICoachView listens for the event to reset in-memory state
+export const CHAT_CLEARED_EVENT = 'flowtimer:chat-cleared';
+export function clearChatHistory(): void {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(STORAGE_KEY_AI_CHAT);
+  window.dispatchEvent(new Event(CHAT_CLEARED_EVENT));
+}
+
 // Extract proposed routine from AI response text
 export function extractProposedRoutine(text: string): { cleanText: string; routine: ProposedRoutine | null } {
   // Regex to match ```workout_routine ... ``` or ```json ... ``` with title & exercises
@@ -274,7 +282,8 @@ export function extractProposedRoutine(text: string): { cleanText: string; routi
 // Send chat message to server proxy
 export async function sendChatMessage(
   messages: Array<{ role: 'user' | 'assistant'; content: string }>,
-  config: AIConfig
+  config: AIConfig,
+  userContext?: string
 ): Promise<string> {
   const provider = config.provider || 'gemini';
   const providerInfo = AI_PROVIDERS.find((p) => p.key === provider);
@@ -294,6 +303,7 @@ export async function sendChatMessage(
       messages,
       provider,
       customConfig,
+      userContext,
     }),
   });
 

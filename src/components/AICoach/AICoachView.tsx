@@ -3,15 +3,14 @@ import {
   Send,
   Bot,
   User,
-  Sparkles,
   Layers,
   Plus,
   Check,
   Play,
-  RotateCcw,
   Clock,
   Dumbbell,
-  AlertCircle
+  AlertCircle,
+  Library
 } from 'lucide-react';
 import {
   ChatMessage,
@@ -22,16 +21,31 @@ import {
   getSavedChatHistory,
   saveChatHistory,
   sendChatMessage,
-  extractProposedRoutine
+  extractProposedRoutine,
+  CHAT_CLEARED_EVENT
 } from '../../utils/ai';
-import { WorkoutRoutine, RoutineExerciseItem, ExerciseItem } from '../../types/workout';
-import { formatTime } from '../../utils/storage';
+import { WorkoutRoutine, RoutineExerciseItem, ExerciseItem, WorkoutGoalPlan, WorkoutLog, UserProfile } from '../../types/workout';
+import { formatTime, normalizeExerciseName } from '../../utils/storage';
+import { buildCoachContext } from '../../utils/goalTracker';
+import { ProposedRoutineExercise } from '../../types/ai';
 
 interface AICoachViewProps {
   existingExercises: ExerciseItem[];
   onAddRoutineFromAI: (routine: WorkoutRoutine) => void;
   onStartRoutineDirectly: (routine: WorkoutRoutine) => void;
   onOpenSettings?: () => void;
+  goalPlans: WorkoutGoalPlan[];
+  logs: WorkoutLog[];
+  userProfile: UserProfile;
+  onSaveExerciseToLibrary: (ex: {
+    name: string;
+    sets?: number;
+    workSeconds?: number;
+    restSeconds?: number;
+    videoUrl?: string;
+    imageUrl?: string;
+    notes?: string;
+  }) => boolean;
 }
 
 const QUICK_PROMPTS = [
@@ -46,11 +60,18 @@ export const AICoachView: React.FC<AICoachViewProps> = ({
   onAddRoutineFromAI,
   onStartRoutineDirectly,
   onOpenSettings,
+  goalPlans,
+  logs,
+  userProfile,
+  onSaveExerciseToLibrary,
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Names saved to library during this session (keyed by normalized exercise name)
+  const [savedNames, setSavedNames] = useState<Set<string>>(new Set());
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -93,7 +114,8 @@ export const AICoachView: React.FC<AICoachViewProps> = ({
 
       // Always read latest active AI config from Settings
       const currentConfig = getSavedAIConfig();
-      const rawResponse = await sendChatMessage(apiMessages, currentConfig);
+      const userContext = buildCoachContext({ profile: userProfile, goalPlans, logs });
+      const rawResponse = await sendChatMessage(apiMessages, currentConfig, userContext);
 
       // Parse workout routine block if present
       const { cleanText, routine } = extractProposedRoutine(rawResponse);
@@ -193,41 +215,51 @@ export const AICoachView: React.FC<AICoachViewProps> = ({
     onStartRoutineDirectly(newRoutine);
   };
 
-  const handleClearHistory = () => {
-    if (window.confirm('確定要清空與 AI 教練的所有對話記錄嗎？')) {
-      const welcome: ChatMessage[] = [
-        {
-          id: 'msg-welcome-reset',
-          role: 'assistant',
-          content: '你好！我是你的專屬 AI 運動教練。告訴我你今天想練什麼，隨時為你生成與修改組合！',
-          timestamp: Date.now(),
-          proposedRoutine: null,
-        },
-      ];
+  // Reset to welcome message (triggered from API settings card)
+  const buildWelcome = (): ChatMessage[] => [
+    {
+      id: 'msg-welcome-' + Date.now(),
+      role: 'assistant',
+      content: '你好！我是你的專屬 AI 運動教練。告訴我你今天想練什麼，隨時為你生成與修改組合！',
+      timestamp: Date.now(),
+      proposedRoutine: null,
+    },
+  ];
+
+  useEffect(() => {
+    const onCleared = () => {
+      const welcome = buildWelcome();
       setMessages(welcome);
-      saveChatHistory(welcome);
-    }
+      setErrorMsg('');
+    };
+    window.addEventListener(CHAT_CLEARED_EVENT, onCleared);
+    return () => window.removeEventListener(CHAT_CLEARED_EVENT, onCleared);
+  }, []);
+
+  // Save every not-yet-in-library exercise from a proposed routine
+  const handleSaveAllExercises = (list: ProposedRoutineExercise[]) => {
+    let count = 0;
+    list.forEach((ex) => {
+      if (savedNames.has(normalizeExerciseName(ex.name))) return;
+      const ok = onSaveExerciseToLibrary({
+        name: ex.name,
+        sets: ex.sets,
+        workSeconds: ex.workSeconds,
+        restSeconds: ex.restSeconds,
+        videoUrl: ex.videoUrl,
+        imageUrl: ex.imageUrl,
+        notes: ex.notes,
+      });
+      if (ok) {
+        count++;
+        setSavedNames((prev) => new Set(prev).add(normalizeExerciseName(ex.name)));
+      }
+    });
+    return count;
   };
 
   return (
-    <div className="max-w-md mx-auto flex flex-col h-[calc(100vh-125px)] bg-[#faf8f5]">
-      {/* Sleek Subheader for quick actions */}
-      <div className="flex items-center justify-between px-4 py-2 text-[11px] text-stone-500 border-b border-stone-200/50 bg-white/40 shrink-0">
-        <span className="flex items-center gap-1.5 font-medium text-stone-600">
-          <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-          AI 運動教練
-        </span>
-        <button
-          type="button"
-          onClick={handleClearHistory}
-          className="hover:text-stone-800 transition-colors flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-lg hover:bg-stone-100"
-          title="清空對話記錄"
-        >
-          <RotateCcw className="w-3 h-3" />
-          清空對話
-        </button>
-      </div>
-
+    <div className="max-w-md mx-auto flex flex-col h-[calc(100vh-92px)] bg-[#faf8f5]">
       {/* Chat Messages Container */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((msg) => {
@@ -282,9 +314,41 @@ export const AICoachView: React.FC<AICoachViewProps> = ({
 
                     {/* Exercises Preview list */}
                     <div className="space-y-1.5 bg-stone-50/80 p-2.5 rounded-xl border border-stone-100">
+                      {/* Header: save all new exercises to library */}
+                      {(() => {
+                        const list = msg.proposedRoutine.exercises;
+                        const allIn = list.every(
+                          (ex) =>
+                            savedNames.has(normalizeExerciseName(ex.name)) ||
+                            existingExercises.some((e) => normalizeExerciseName(e.name) === normalizeExerciseName(ex.name))
+                        );
+                        return (
+                          <div className="flex items-center justify-between pb-1 mb-0.5 border-b border-stone-200/70">
+                            <span className="text-[10px] text-stone-400 flex items-center gap-1">
+                              <Library className="w-3 h-3" />
+                              可逐項存入動作庫
+                            </span>
+                            <button
+                              type="button"
+                              disabled={allIn}
+                              onClick={() => {
+                                const n = handleSaveAllExercises(list);
+                                if (n > 0) setErrorMsg('');
+                              }}
+                              className={`text-[10px] font-semibold px-2 py-0.5 rounded-lg transition-colors active:scale-95 ${
+                                allIn
+                                  ? 'text-emerald-700 bg-emerald-50 cursor-default'
+                                  : 'text-stone-700 hover:bg-stone-200'
+                              }`}
+                            >
+                              {allIn ? '✓ 全在庫中' : '＋ 全部存入'}
+                            </button>
+                          </div>
+                        );
+                      })()}
                       {msg.proposedRoutine.exercises.map((ex, idx) => (
-                        <div key={idx} className="flex items-center justify-between text-[11px]">
-                          <div className="flex items-center gap-1.5 truncate max-w-[190px]">
+                        <div key={idx} className="flex items-center justify-between text-[11px] gap-1">
+                          <div className="flex items-center gap-1.5 min-w-0 flex-1">
                             <span className="w-4 h-4 rounded-full bg-stone-200 text-stone-700 text-[9px] font-bold flex items-center justify-center shrink-0">
                               {idx + 1}
                             </span>

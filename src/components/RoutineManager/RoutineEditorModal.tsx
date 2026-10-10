@@ -14,13 +14,23 @@ import {
   Flame
 } from 'lucide-react';
 import { WorkoutRoutine, RoutineExerciseItem, ExerciseItem } from '../../types/workout';
-import { calculateRoutineDuration, formatTime } from '../../utils/storage';
+import { calculateRoutineDuration, formatTime, normalizeExerciseName } from '../../utils/storage';
+import { useAlert, useConfirm } from '../ui/ConfirmProvider';
 
 interface RoutineEditorModalProps {
   routine: WorkoutRoutine | null; // null for creating new
   allExercises: ExerciseItem[];
   onSave: (routine: WorkoutRoutine) => void;
   onClose: () => void;
+  onSaveExerciseToLibrary: (ex: {
+    name: string;
+    sets?: number;
+    workSeconds?: number;
+    restSeconds?: number;
+    videoUrl?: string;
+    imageUrl?: string;
+    notes?: string;
+  }) => boolean;
 }
 
 export const RoutineEditorModal: React.FC<RoutineEditorModalProps> = ({
@@ -28,7 +38,10 @@ export const RoutineEditorModal: React.FC<RoutineEditorModalProps> = ({
   allExercises,
   onSave,
   onClose,
+  onSaveExerciseToLibrary,
 }) => {
+  const showAlert = useAlert();
+  const confirm = useConfirm();
   const [title, setTitle] = useState(routine?.title || '');
   const [description, setDescription] = useState(routine?.description || '');
   const [tag, setTag] = useState(routine?.tag || '綜合訓練');
@@ -95,6 +108,31 @@ export const RoutineEditorModal: React.FC<RoutineEditorModalProps> = ({
     setExercises((prev) => prev.filter((_, i) => i !== index));
   };
 
+  // Badge: emerald when the exercise already exists in library; click to add when missing
+  const isExerciseInLibrary = (name: string) => {
+    const norm = normalizeExerciseName(name);
+    return allExercises.some((e) => normalizeExerciseName(e.name) === norm);
+  };
+
+  const handleBadgeClick = async (item: RoutineExerciseItem) => {
+    if (isExerciseInLibrary(item.name)) return;
+    const ok = await confirm(`將「${item.name}」加入動作庫嗎？`, {
+      title: '加入動作庫',
+      confirmText: '加入',
+      danger: false,
+    });
+    if (!ok) return;
+    onSaveExerciseToLibrary({
+      name: item.name,
+      sets: item.sets,
+      workSeconds: item.workSeconds,
+      restSeconds: item.restSeconds,
+      videoUrl: item.videoUrl,
+      imageUrl: item.imageUrl,
+      notes: item.notes,
+    });
+  };
+
   // Temporary mock object to compute duration
   const currentTempRoutine: WorkoutRoutine = {
     id: routine?.id || 'temp',
@@ -112,7 +150,7 @@ export const RoutineEditorModal: React.FC<RoutineEditorModalProps> = ({
     e.preventDefault();
     if (!title.trim()) return;
     if (exercises.length === 0) {
-      alert('請至少加入一個訓練動作！');
+      showAlert('請至少加入一個訓練動作！');
       return;
     }
 
@@ -239,9 +277,24 @@ export const RoutineEditorModal: React.FC<RoutineEditorModalProps> = ({
                     {/* Item title and order controls */}
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <span className="w-5 h-5 rounded-full bg-stone-200 text-stone-700 text-[10px] font-bold flex items-center justify-center">
-                          {idx + 1}
-                        </span>
+                        {(() => {
+                          const inLib = isExerciseInLibrary(item.name);
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => handleBadgeClick(item)}
+                              disabled={inLib}
+                              title={inLib ? '已在動作庫中' : '點擊加入動作庫'}
+                              className={`w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center transition-colors active:scale-90 ${
+                                inLib
+                                  ? 'bg-amber-100/70 text-amber-800 cursor-default'
+                                  : 'bg-stone-200 text-stone-700 hover:bg-amber-200'
+                              }`}
+                            >
+                              {idx + 1}
+                            </button>
+                          );
+                        })()}
                         <h4 className="font-bold text-xs text-stone-800 truncate max-w-[170px]">
                           {item.name}
                         </h4>

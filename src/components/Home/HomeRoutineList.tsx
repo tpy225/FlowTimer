@@ -12,12 +12,12 @@ import {
   Search,
   Filter,
   ArrowRight,
-  Video,
   Star,
   X
 } from 'lucide-react';
 import { WorkoutRoutine, UserProfile } from '../../types/workout';
 import { calculateRoutineDuration, formatTime } from '../../utils/storage';
+import { useConfirm } from '../ui/ConfirmProvider';
 
 interface HomeRoutineListProps {
   routines: WorkoutRoutine[];
@@ -29,7 +29,6 @@ interface HomeRoutineListProps {
   onEditRoutine: (routine: WorkoutRoutine) => void;
   onDeleteRoutine: (id: string) => void;
   onCreateNewRoutine: () => void;
-  onOpenVideoPreview: (url: string, title: string) => void;
   onGoToAICoach?: () => void;
 }
 
@@ -43,9 +42,9 @@ export const HomeRoutineList: React.FC<HomeRoutineListProps> = ({
   onEditRoutine,
   onDeleteRoutine,
   onCreateNewRoutine,
-  onOpenVideoPreview,
   onGoToAICoach,
 }) => {
+  const confirm = useConfirm();
   const [filterTag, setFilterTag] = useState<string>('all');
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -240,37 +239,13 @@ export const HomeRoutineList: React.FC<HomeRoutineListProps> = ({
                   <p className="text-xs text-stone-500 mb-3 line-clamp-1">{routine.description}</p>
                 )}
 
-                {/* Exercises preview pills */}
-                <div className="space-y-1.5 mb-4">
-                  <div className="text-[11px] font-semibold text-stone-400">動作清單 ({routine.exercises.length} 項 · 共 {totalSets} 組)：</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {routine.exercises.map((ex, i) => (
-                      <span
-                        key={ex.id || i}
-                        className="text-[11px] px-2.5 py-1 bg-stone-50 rounded-xl border border-stone-200/70 text-stone-700 flex items-center gap-1"
-                      >
-                        <span className="font-semibold">{ex.name}</span>
-                        <span className="text-[10px] text-stone-400">({ex.sets}組)</span>
-                        {ex.videoUrl && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onOpenVideoPreview(ex.videoUrl!, ex.name);
-                            }}
-                            className="text-amber-600 hover:text-amber-800 ml-0.5"
-                            title="預覽此動作影片"
-                          >
-                            <Video className="w-3 h-3" />
-                          </button>
-                        )}
-                      </span>
-                    ))}
-                  </div>
+                {/* Compact exercise summary (full list hidden to save space) */}
+                <div className="text-[11px] font-semibold text-stone-400 mb-4">
+                  {routine.exercises.length} 項動作 · 共 {totalSets} 組
                 </div>
 
                 {/* Bottom Action Controls */}
-                <div className="flex items-center gap-2 pt-2 border-t border-stone-100">
+                <div className="flex items-center gap-2">
                   <button
                     onClick={() => onSelectRoutineToStart(routine)}
                     className="flex-1 py-3 px-4 bg-stone-900 hover:bg-black text-white font-semibold rounded-2xl text-xs flex items-center justify-center gap-2 shadow-sm active:scale-98 transition-all"
@@ -289,10 +264,9 @@ export const HomeRoutineList: React.FC<HomeRoutineListProps> = ({
 
                   {!routine.isPreset && (
                     <button
-                      onClick={() => {
-                        if (window.confirm(`確定要刪除自訂組合「${routine.title}」嗎？`)) {
-                          onDeleteRoutine(routine.id);
-                        }
+                      onClick={async () => {
+                        const ok = await confirm(`確定要刪除自訂組合「${routine.title}」嗎？`, { title: '刪除組合' });
+                        if (ok) onDeleteRoutine(routine.id);
                       }}
                       className="p-3 bg-stone-100 hover:bg-red-50 text-stone-400 hover:text-red-500 rounded-2xl transition-colors"
                       title="刪除此組合"

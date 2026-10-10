@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { WorkoutGoalPlan, WorkoutRoutine, GoalRuleItem } from '../../types/workout';
 import { getStartOfCurrentWeek } from '../../utils/goalTracker';
+import { useAlert } from '../ui/ConfirmProvider';
 
 interface GoalEditorModalProps {
   currentPlan?: WorkoutGoalPlan | null;
@@ -25,6 +26,7 @@ export const GoalEditorModal: React.FC<GoalEditorModalProps> = ({
   onSavePlan,
   onClose,
 }) => {
+  const showAlert = useAlert();
   const [title, setTitle] = useState(currentPlan?.title || '一週3天A組合 + 1天B組合');
   const [durationWeeks, setDurationWeeks] = useState(currentPlan?.durationWeeks || 4);
   const [startDate, setStartDate] = useState(currentPlan?.startDate || getStartOfCurrentWeek());
@@ -135,7 +137,7 @@ export const GoalEditorModal: React.FC<GoalEditorModalProps> = ({
 
   const handleDeleteRule = (index: number) => {
     if (rules.length <= 1) {
-      alert('請至少保留一項訓練規則！');
+      showAlert('請至少保留一項訓練規則！');
       return;
     }
     const updated = rules.filter((_, i) => i !== index);
@@ -145,7 +147,7 @@ export const GoalEditorModal: React.FC<GoalEditorModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
-      alert('請輸入目標計劃名稱');
+      showAlert('請輸入目標計劃名稱');
       return;
     }
 

@@ -31,7 +31,8 @@ import {
   toggleFavoriteExercise,
   DEFAULT_EXERCISES,
   DEFAULT_ROUTINES,
-  formatDateKey
+  formatDateKey,
+  normalizeExerciseName
 } from './utils/storage';
 import {
   getSavedGoalPlans,
@@ -52,8 +53,10 @@ import { AICoachView } from './components/AICoach/AICoachView';
 import { FloatingVideoPlayer } from './components/VideoPlayer/FloatingVideoPlayer';
 import { PWAInstallGuide } from './components/PWAInstallGuide';
 import { Timer, Sparkles, Volume2, Settings as SettingsIcon } from 'lucide-react';
+import { useAlert } from './components/ui/ConfirmProvider';
 
 export default function App() {
+  const showAlert = useAlert();
   const [activeTab, setActiveTab] = useState<ActiveTab>('home');
 
   // Persistence State
@@ -113,6 +116,33 @@ export default function App() {
     const updated = [item, ...exercises];
     setExercises(updated);
     saveExercises(updated);
+  };
+
+  // Save one AI-proposed exercise into the library; false = duplicate name
+  const handleSaveExerciseFromAI = (ex: {
+    name: string;
+    sets?: number;
+    workSeconds?: number;
+    restSeconds?: number;
+    videoUrl?: string;
+    imageUrl?: string;
+    notes?: string;
+  }): boolean => {
+    const current = getSavedExercises();
+    const key = normalizeExerciseName(ex.name);
+    if (current.some((e) => normalizeExerciseName(e.name) === key)) return false;
+
+    handleAddExercise({
+      name: ex.name.trim(),
+      category: 'fullbody',
+      defaultSets: ex.sets || 3,
+      defaultWorkSeconds: ex.workSeconds || 30,
+      defaultRestSeconds: ex.restSeconds || 20,
+      videoUrl: ex.videoUrl,
+      imageUrl: ex.imageUrl,
+      description: ex.notes,
+    });
+    return true;
   };
 
   const handleUpdateExercise = (updatedEx: ExerciseItem) => {
@@ -195,7 +225,7 @@ export default function App() {
     saveExercises(DEFAULT_EXERCISES);
     setRoutines(DEFAULT_ROUTINES);
     saveRoutines(DEFAULT_ROUTINES);
-    alert('已還原預設動作庫與訓練組合！');
+    showAlert('已還原預設動作庫與訓練組合！');
   };
 
   // Log reflections / notes
@@ -281,23 +311,36 @@ export default function App() {
               <Timer className="w-4 h-4 stroke-[2.5]" />
             </div>
             <div>
-              <span className="font-extrabold text-sm tracking-tight text-stone-900 block leading-tight">
-                FlowTimer
-              </span>
-              <span className="text-[10px] text-stone-400 block leading-none">
-                柔和運動間歇計時器
-              </span>
+              {(() => {
+                const meta: Record<string, { title: string; sub?: string }> = {
+                  home: { title: 'FlowTimer', sub: '柔和運動間歇計時器' },
+                  library: { title: '動作庫', sub: '自訂單個訓練項目的時間、組數與示範影片' },
+                  calendar: { title: '打卡日曆', sub: '每日體重觀察趨勢、自動打卡' },
+                  ai: { title: 'AI 教練', sub: '讓它幫你定製運動計劃' },
+                  profile: { title: '個人', sub: '記錄你的成長' },
+                  settings: { title: '設定', sub: '自訂 AI 教練模型、語音音效及訓練偏好' },
+                };
+                const m = meta[activeTab];
+                return (
+                  <>
+                    <span className="font-extrabold text-sm tracking-tight text-stone-900 block leading-tight">
+                      {m.title}
+                    </span>
+                    {m.sub && (
+                      <span className="text-[10px] text-stone-400 block leading-none mt-0.5">
+                        {m.sub}
+                      </span>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           </div>
 
           <div className="flex items-center gap-2">
             <button
               onClick={() => setActiveTab('settings')}
-              className={`p-1.5 rounded-xl transition-colors ${
-                activeTab === 'settings'
-                  ? 'bg-amber-100 text-stone-900'
-                  : 'text-stone-400 hover:text-stone-700 hover:bg-stone-100'
-              }`}
+              className="p-1.5 rounded-xl text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors"
               title="系統設定"
             >
               <SettingsIcon className="w-4 h-4" />
@@ -324,7 +367,6 @@ export default function App() {
                 setEditingRoutine(null);
                 setIsCreatingRoutine(true);
               }}
-              onOpenVideoPreview={(url, title) => setFloatingVideo({ url, title })}
               onGoToAICoach={() => setActiveTab('ai')}
             />
           )}
@@ -351,6 +393,10 @@ export default function App() {
           {activeTab === 'ai' && (
             <AICoachView
               existingExercises={exercises}
+              goalPlans={goalPlans}
+              logs={logs}
+              userProfile={userProfile}
+              onSaveExerciseToLibrary={handleSaveExerciseFromAI}
               onAddRoutineFromAI={(routine) => {
                 handleSaveRoutine(routine);
               }}
@@ -400,6 +446,7 @@ export default function App() {
             routine={editingRoutine}
             allExercises={exercises}
             onSave={handleSaveRoutine}
+            onSaveExerciseToLibrary={handleSaveExerciseFromAI}
             onClose={() => {
               setIsCreatingRoutine(false);
               setEditingRoutine(null);

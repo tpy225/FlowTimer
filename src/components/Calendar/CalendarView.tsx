@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  Calendar as CalendarIcon,
   ChevronLeft,
   ChevronRight,
   Flame,
@@ -19,6 +18,7 @@ import {
 import { WorkoutLog, WorkoutRoutine, WeightLog } from '../../types/workout';
 import { formatDateKey, formatTime } from '../../utils/storage';
 import { WeightTrendChart } from './WeightTrendChart';
+import { useConfirm } from '../ui/ConfirmProvider';
 
 interface CalendarViewProps {
   logs: WorkoutLog[];
@@ -39,6 +39,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   onAddManualLog,
   onDeleteLog,
 }) => {
+  const confirm = useConfirm();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDateKey, setSelectedDateKey] = useState<string>(formatDateKey(new Date()));
 
@@ -143,24 +144,6 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
 
   return (
     <div className="max-w-md mx-auto px-4 py-4 pb-28 space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-stone-900 tracking-tight flex items-center gap-1.5">
-            <CalendarIcon className="w-5 h-5 text-amber-600" />
-            訓練打卡與體態日曆
-          </h2>
-          <p className="text-xs text-stone-500 mt-0.5">每次完成自動打卡，可編輯每日體重觀察趨勢</p>
-        </div>
-
-        <button
-          onClick={goToToday}
-          className="text-xs font-semibold px-2.5 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl transition-colors"
-        >
-          今天
-        </button>
-      </div>
-
       {/* Monthly Overview Badges */}
       <div className="grid grid-cols-3 gap-2">
         <div className="bg-white p-3 rounded-2xl border border-stone-200/80 shadow-2xs text-center">
@@ -201,6 +184,12 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
             {year} 年 {month + 1} 月
           </h3>
           <div className="flex items-center gap-1">
+            <button
+              onClick={goToToday}
+              className="text-[11px] font-semibold px-2.5 py-1 mr-1 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg transition-colors"
+            >
+              今天
+            </button>
             <button
               onClick={prevMonth}
               className="p-1.5 hover:bg-stone-100 rounded-lg text-stone-600 transition-colors"
@@ -325,10 +314,9 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
 
             {onDeleteWeightLog && (
               <button
-                onClick={() => {
-                  if (window.confirm('確定要刪除該日期的體重記錄嗎？')) {
-                    onDeleteWeightLog(selectedWeightLog.id);
-                  }
+                onClick={async () => {
+                  const ok = await confirm('確定要刪除該日期的體重記錄嗎？', { title: '刪除體重記錄' });
+                  if (ok) onDeleteWeightLog(selectedWeightLog.id);
                 }}
                 className="p-1 text-stone-300 hover:text-red-500 transition-colors"
                 title="刪除體重記錄"
@@ -401,10 +389,9 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
 
                 {onDeleteLog && (
                   <button
-                    onClick={() => {
-                      if (window.confirm('確定要刪除這筆打卡記錄嗎？')) {
-                        onDeleteLog(log.id);
-                      }
+                    onClick={async () => {
+                      const ok = await confirm('確定要刪除這筆打卡記錄嗎？', { title: '刪除打卡記錄' });
+                      if (ok) onDeleteLog(log.id);
                     }}
                     className="p-1 text-stone-300 hover:text-red-500 transition-colors"
                     title="刪除記錄"

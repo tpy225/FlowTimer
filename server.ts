@@ -60,6 +60,16 @@ JSON 代碼塊格式範例：
 \`\`\`
 請確保輸出的 JSON 欄位完全符合上述結構。若使用者只是詢問飲食或健身知識，則無需輸出 workout_routine 代碼塊，以專業耐心的教練角度解答即可。`;
 
+// Append auto-collected user context (profile, goals, progress, workout history)
+function buildSystemInstruction(userContext?: string): string {
+  if (!userContext || !userContext.trim()) return SYSTEM_INSTRUCTION;
+  return `${SYSTEM_INSTRUCTION}
+
+【系統自動擷取的使用者最新檔案與訓練記錄】
+以下資料由系統自動提供，請在問答與設計訓練組合時主動參考（例如依目標進度調整頻率、強度，並給予針對性鼓勵），但不要在回覆中逐字重複這些內容：
+${userContext}`;
+}
+
 // Provider default endpoints & models
 const PROVIDER_DEFAULTS = {
   deepseek: {
@@ -100,7 +110,7 @@ app.get('/api/health', (req: Request, res: Response) => {
 // AI Chat Proxy endpoint
 app.post('/api/chat', async (req: Request, res: Response) => {
   try {
-    const { messages, provider = 'gemini', customConfig } = req.body;
+    const { messages, provider = 'gemini', customConfig, userContext } = req.body;
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: '請提供有效的 messages 對話記錄。' });
@@ -132,7 +142,7 @@ app.post('/api/chat', async (req: Request, res: Response) => {
             model: modelName,
             contents: formattedContents,
             config: {
-              systemInstruction: SYSTEM_INSTRUCTION,
+              systemInstruction: buildSystemInstruction(userContext),
               temperature: 0.7,
             },
           });
@@ -171,7 +181,7 @@ app.post('/api/chat', async (req: Request, res: Response) => {
 
     // Format messages for OpenAI compatibility
     const openaiMessages = [
-      { role: 'system', content: SYSTEM_INSTRUCTION },
+      { role: 'system', content: buildSystemInstruction(userContext) },
       ...messages.map((m: { role: string; content: string }) => ({
         role: m.role === 'assistant' ? 'assistant' : 'user',
         content: m.content,
@@ -209,6 +219,51 @@ app.post('/api/chat', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     console.error('Chat error:', error);
     const message = error instanceof Error ? error.message : '伺服器處理 AI 對話時發生錯誤';
+    return res.status(500).json({ error: message });
+  }
+});
+
+// Fetch available models from an OpenAI-compatible endpoint (GET /models)
+app.post('/api/models', async (req: Request, res: Response) => {
+  try {
+    const { baseUrl, apiKey } = req.body;
+
+    if (!baseUrl || typeof baseUrl !== 'string') {
+      return res.status(400).json({ error: '請先填寫有效的 Base URL。' });
+    }
+
+    const url = `${baseUrl.replace(/\/$/, '')}/models`;
+
+    const apiRes = await fetch(url, {
+      method: 'GET',
+      headers: apiKey ? { Authorization: `Bearer ${String(apiKey).trim()}` } : {},
+    });
+
+    if (!apiRes.ok) {
+      const errText = await apiRes.text().catch(() => '');
+      return res.status(apiRes.status).json({
+        error: `拉取模型失敗 (${apiRes.status}): ${errText.slice(0, 200)}`,
+      });
+    }
+
+    const data = await apiRes.json();
+
+    // OpenAI-compatible: { data: [{ id }] }; some gateways return { models: [...] }
+    let models: string[] = [];
+    if (Array.isArray(data.data)) {
+      models = data.data
+        .map((m: unknown) => (typeof m === 'string' ? m : (m as { id?: string }).id))
+        .filter((m: unknown): m is string => Boolean(m));
+    } else if (Array.isArray(data.models)) {
+      models = data.models
+        .map((m: unknown) => (typeof m === 'string' ? m : (m as { id?: string; name?: string }).id || (m as { name?: string }).name))
+        .filter((m: unknown): m is string => Boolean(m));
+    }
+
+    return res.json({ models: Array.from(new Set(models)) });
+  } catch (error: unknown) {
+    console.error('Fetch models error:', error);
+    const message = error instanceof Error ? error.message : '伺服器拉取模型時發生錯誤';
     return res.status(500).json({ error: message });
   }
 });

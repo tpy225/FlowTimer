@@ -9,6 +9,14 @@ const STORAGE_KEYS = {
   WEIGHT_LOGS: 'flowtimer_weight_logs_v1',
 };
 
+// Canonical key for exercise-name dedup (CJK/latin, punctuation-insensitive)
+export function normalizeExerciseName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[\s()（）【】「」.,、，\-_.·/]/g, '');
+}
+
 // High quality initial default exercises with real form tutorial videos and serene photos
 export const DEFAULT_EXERCISES: ExerciseItem[] = [
   {

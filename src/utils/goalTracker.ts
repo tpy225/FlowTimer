@@ -3,7 +3,8 @@ import {
   GoalCalculatedProgress,
   GoalWeekProgress,
   WorkoutLog,
-  WorkoutRoutine
+  WorkoutRoutine,
+  UserProfile
 } from '../types/workout';
 import { formatDateKey } from './storage';
 
@@ -250,4 +251,97 @@ export function calculateGoalProgress(
     isFullyCompleted,
     weeks,
   };
+}
+
+// Build the text context injected into every AI coach request
+export function buildCoachContext(params: {
+  profile?: UserProfile;
+  goalPlans: WorkoutGoalPlan[];
+  logs: WorkoutLog[];
+  recentLogLimit?: number;
+}): string {
+  const { profile, goalPlans, logs, recentLogLimit = 15 } = params;
+  const lines: string[] = [];
+
+  // 1. User profile
+  if (profile) {
+    lines.push('■ 使用者檔案');
+    if (profile.name) lines.push(`- 名稱：${profile.name}`);
+    if (profile.heightCm) lines.push(`- 身高：${profile.heightCm} cm`);
+    if (profile.weightKg) lines.push(`- 體重：${profile.weightKg} kg`);
+    if (profile.goal) lines.push(`- 整體健身目標：${profile.goal}`);
+    if (profile.weeklyTargetDays) lines.push(`- 每週目標訓練天數：${profile.weeklyTargetDays} 天`);
+    lines.push('');
+  }
+
+  const activePlans = goalPlans.filter((p) => p.isActive);
+  const historyPlans = goalPlans
+    .filter((p) => !p.isActive)
+    .sort((a, b) => (b.completedAt || b.createdAt) - (a.completedAt || a.createdAt));
+
+  const formatPlanRules = (progress: GoalCalculatedProgress) => {
+    const currentWeek = progress.weeks.find((w) => w.isCurrentWeek) || progress.weeks[progress.weeks.length - 1];
+    if (!currentWeek) return [];
+    return currentWeek.ruleProgress.map(
+      (r) => `   · ${r.routineTitle}：本週 ${r.completedTimes}/${r.targetTimes} 次${r.isMet ? '（已達標）' : ''}`
+    );
+  };
+
+  // 2. Active goals with live progress
+  lines.push(`■ 進行中目標（${activePlans.length} 個）`);
+  if (activePlans.length === 0) {
+    lines.push('（目前無進行中的目標）');
+  } else {
+    activePlans.forEach((plan, idx) => {
+      const progress = calculateGoalProgress(plan, logs);
+      lines.push(
+        `${idx + 1}. ${plan.title}（${plan.startDate} 起，共 ${plan.durationWeeks} 週，當前第 ${Math.min(
+          progress.currentWeekIndex + 1,
+          plan.durationWeeks
+        )} 週）`
+      );
+      lines.push(
+        `   整體進度：${progress.totalCompletedWorkouts}/${progress.totalTargetWorkouts} 次（${progress.overallPercent}%）`
+      );
+      lines.push(...formatPlanRules(progress));
+    });
+  }
+  lines.push('');
+
+  // 3. Historical (ended) goals
+  lines.push(`■ 已結束的歷史目標（${historyPlans.length} 個）`);
+  if (historyPlans.length === 0) {
+    lines.push('（無歷史目標）');
+  } else {
+    historyPlans.forEach((plan, idx) => {
+      const progress = calculateGoalProgress(plan, logs);
+      const endedDate = plan.completedAt ? formatDateKey(new Date(plan.completedAt)) : '未記錄';
+      lines.push(
+        `${idx + 1}. ${plan.title}（${plan.startDate} 起，${plan.durationWeeks} 週，於 ${endedDate} 結束）`
+      );
+      lines.push(
+        `   累計完成：${progress.totalCompletedWorkouts}/${progress.totalTargetWorkouts} 次（${progress.overallPercent}%），全程達標：${progress.isFullyCompleted ? '是' : '否'}`
+      );
+      if (plan.note) lines.push(`   結語備註：${plan.note}`);
+    });
+  }
+  lines.push('');
+
+  // 4. Recent workout logs
+  const recent = logs.slice(0, recentLogLimit);
+  lines.push(`■ 近期訓練記錄（最近 ${recent.length} 筆，按日期由新到舊）`);
+  if (recent.length === 0) {
+    lines.push('（尚無完成記錄）');
+  } else {
+    recent.forEach((log) => {
+      const mins = Math.round(log.totalDurationSeconds / 60);
+      lines.push(
+        `- ${log.date} ${log.routineTitle}，約 ${mins} 分鐘，${log.completedExercisesCount} 個動作 / ${log.totalSetsCount} 組${
+          log.rating ? `，自評 ${log.rating}/5` : ''
+        }${log.note ? `，備註：${log.note}` : ''}`
+      );
+    });
+  }
+
+  return lines.join('\n');
 }

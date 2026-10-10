@@ -80,7 +80,7 @@ export const TimelineList: React.FC<TimelineListProps> = ({
               >
                 {/* Left: Thumbnail & Info */}
                 <div
-                  className="flex items-center gap-3 flex-1 cursor-pointer"
+                  className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
                   onClick={() => onJumpToExercise(idx)}
                 >
                   {/* Thumbnail / Image */}

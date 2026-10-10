@@ -7,16 +7,15 @@ import {
   Play,
   RotateCcw,
   Sparkles,
-  Smartphone,
   Check,
   Headphones
 } from 'lucide-react';
 import { UserSettings } from '../types/workout';
 import { soundEffects, voiceAssistant } from '../utils/audio';
 import { exportAllDataAsJSON, importDataFromJSON } from '../utils/storage';
-import { PWAInstallGuide } from './PWAInstallGuide';
 import { Download, Upload, Database, FileText } from 'lucide-react';
 import { AISettingsCard } from './Settings/AISettingsCard';
+import { useConfirm } from './ui/ConfirmProvider';
 
 interface SettingsModalProps {
   settings: UserSettings;
@@ -35,6 +34,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [testStatus, setTestStatus] = useState<string>('');
   const [importNotice, setImportNotice] = useState<string>('');
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const confirm = useConfirm();
 
   const updateSetting = <K extends keyof UserSettings>(key: K, value: UserSettings[K]) => {
     const updated = { ...localSettings, [key]: value };
@@ -85,18 +85,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   return (
     <div className="max-w-md mx-auto px-4 py-4 pb-24">
-      {/* Header */}
-      <div className="mb-4">
-        <h2 className="text-xl font-bold text-stone-900 tracking-tight">個人與系統設定</h2>
-        <p className="text-xs text-stone-500 mt-0.5">自訂 AI 教練模型、語音音效及訓練偏好</p>
-      </div>
-
       <div className="space-y-4">
         {/* AI API & Provider Configuration Section */}
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-stone-900 font-bold text-sm px-1">
             <Sparkles className="w-4 h-4 text-amber-600" />
-            AI 平台與 API 設定 (Provider & Model)
+            API 設定
           </div>
           <AISettingsCard />
         </div>
@@ -262,20 +256,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <p className="text-xs text-center text-emerald-700 font-medium">{testStatus}</p>
         )}
 
-        {/* Mobile PWA Install Card */}
-        <div className="bg-white rounded-3xl p-4 border border-stone-200/80 shadow-2xs space-y-2.5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-stone-800 font-bold text-sm">
-              <Smartphone className="w-4 h-4 text-amber-600" />
-              安裝為手機獨立 App
-            </div>
-            <PWAInstallGuide />
-          </div>
-          <p className="text-[11px] text-stone-500 leading-relaxed">
-            支援 iPhone (Safari) 與 Android (Chrome) 直接添加到桌面。無需應用商店審核，無廣告，全螢幕獨立運行。
-          </p>
-        </div>
-
         {/* Data Persistence, Export & Import */}
         <div className="bg-white rounded-3xl p-4 border border-stone-200/80 shadow-2xs space-y-3">
           <div className="flex items-center gap-2 text-stone-800 font-bold text-sm">
@@ -329,10 +309,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         {/* Reset Defaults */}
         <div className="pt-2 text-center">
           <button
-            onClick={() => {
-              if (window.confirm('確定要還原預設的訓練項目與組合嗎？')) {
-                onResetToDefaults();
-              }
+            onClick={async () => {
+              const ok = await confirm('確定要還原預設的訓練項目與組合嗎？', {
+                title: '還原預設',
+                confirmText: '還原',
+              });
+              if (ok) onResetToDefaults();
             }}
             className="inline-flex items-center gap-1 text-xs text-stone-400 hover:text-stone-600 p-2 rounded-xl transition-colors"
           >

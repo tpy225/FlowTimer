@@ -13,7 +13,8 @@ import {
   AlertCircle,
   Sparkles,
   RefreshCw,
-  Sliders
+  Sliders,
+  Eraser
 } from 'lucide-react';
 import { AIConfig, AIProfileConfig, AIProvider } from '../../types/ai';
 import {
@@ -23,14 +24,18 @@ import {
   getActiveProfileId,
   setActiveProfileId,
   fetchRemoteModels,
-  sendChatMessage
+  sendChatMessage,
+  clearChatHistory
 } from '../../utils/ai';
+import { useAlert, useConfirm } from '../ui/ConfirmProvider';
 
 interface AISettingsCardProps {
   onConfigChange?: (config: AIConfig) => void;
 }
 
 export const AISettingsCard: React.FC<AISettingsCardProps> = ({ onConfigChange }) => {
+  const showAlert = useAlert();
+  const confirm = useConfirm();
   const [profiles, setProfiles] = useState<AIProfileConfig[]>([]);
   const [activeId, setActiveId] = useState<string>('profile-default');
 
@@ -52,6 +57,10 @@ export const AISettingsCard: React.FC<AISettingsCardProps> = ({ onConfigChange }
     msg: '',
   });
   const [saveToast, setSaveToast] = useState(false);
+
+  // In-app name input modal (window.prompt is unavailable in embedded preview)
+  const [nameModal, setNameModal] = useState<{ mode: 'add' | 'rename'; value: string } | null>(null);
+  const [askDelete, setAskDelete] = useState(false);
 
   const providerDropdownRef = useRef<HTMLDivElement>(null);
   const profileDropdownRef = useRef<HTMLDivElement>(null);
@@ -154,50 +163,80 @@ export const AISettingsCard: React.FC<AISettingsCardProps> = ({ onConfigChange }
     }
   };
 
-  // Add new profile
+  // Add new profile — open name modal
   const handleAddProfile = () => {
-    const name = window.prompt('請輸入新配置名稱：', `配置 ${profiles.length + 1}`);
-    if (!name || !name.trim()) return;
+    setNameModal({ mode: 'add', value: `配置 ${profiles.length + 1}` });
+  };
 
+  const confirmAddProfile = (name: string) => {
     const newProfile: AIProfileConfig = {
       id: 'profile-' + Date.now(),
-      name: name.trim(),
+      name,
       provider: 'custom',
       apiKey: '',
       baseUrl: 'https://api.openai.com/v1',
       model: 'gpt-4o-mini',
     };
 
-    const updated = [...profiles, newProfile];
+    // Persist current form into the previous active profile, then append the new one
+    const withCurrentSaved = profiles.map((p) =>
+      p.id === activeId ? { ...p, provider, baseUrl, apiKey, model } : p
+    );
+    const updated = [...withCurrentSaved, newProfile];
     setProfiles(updated);
     saveAIProfiles(updated);
-    handleSelectProfile(newProfile.id);
+
+    // Switch to the new profile (avoid handleSelectProfile, whose save step uses a stale list)
+    setActiveId(newProfile.id);
+    setActiveProfileId(newProfile.id);
+    setProvider(newProfile.provider);
+    setBaseUrl(newProfile.baseUrl);
+    setApiKey(newProfile.apiKey);
+    setModel(newProfile.model);
+    setTestStatus({ type: 'idle', msg: '' });
   };
 
-  // Rename profile
+  // Rename profile — open name modal
   const handleRenameProfile = () => {
     if (!activeProfile) return;
-    const newName = window.prompt('請輸入新的配置名稱：', activeProfile.name);
-    if (!newName || !newName.trim() || newName.trim() === activeProfile.name) return;
+    setNameModal({ mode: 'rename', value: activeProfile.name });
+  };
 
-    const updated = profiles.map((p) => (p.id === activeId ? { ...p, name: newName.trim() } : p));
+  const confirmRenameProfile = (newName: string) => {
+    const updated = profiles.map((p) => (p.id === activeId ? { ...p, name: newName } : p));
     setProfiles(updated);
     saveAIProfiles(updated);
   };
 
-  // Delete profile
+  // Delete profile — ask confirmation via in-app modal
   const handleDeleteProfile = () => {
     if (profiles.length <= 1) {
-      alert('至少需保留一個 AI 配置檔案。');
+      showAlert('至少需保留一個 AI 配置檔案。');
       return;
     }
-    if (window.confirm(`確定要刪除「${activeProfile?.name}」配置嗎？`)) {
-      const remaining = profiles.filter((p) => p.id !== activeId);
-      setProfiles(remaining);
-      saveAIProfiles(remaining);
-      const nextActive = remaining[0];
-      handleSelectProfile(nextActive.id);
-    }
+    setAskDelete(true);
+  };
+
+  const confirmDeleteProfile = () => {
+    // Persist current form, then remove the active profile
+    const withCurrentSaved = profiles.map((p) =>
+      p.id === activeId ? { ...p, provider, baseUrl, apiKey, model } : p
+    );
+    const remaining = withCurrentSaved.filter((p) => p.id !== activeId);
+    if (remaining.length === 0) return;
+
+    setProfiles(remaining);
+    saveAIProfiles(remaining);
+    setAskDelete(false);
+
+    const next = remaining[0];
+    setActiveId(next.id);
+    setActiveProfileId(next.id);
+    setProvider(next.provider);
+    setBaseUrl(next.baseUrl);
+    setApiKey(next.apiKey);
+    setModel(next.model);
+    setTestStatus({ type: 'idle', msg: '' });
   };
 
   // Select provider from dropdown
@@ -215,7 +254,7 @@ export const AISettingsCard: React.FC<AISettingsCardProps> = ({ onConfigChange }
   // Pull / Fetch remote models from Base URL
   const handleFetchModels = async () => {
     if (!baseUrl.trim()) {
-      alert('請先填寫 Base URL');
+      showAlert('請先填寫 Base URL');
       return;
     }
 
@@ -278,6 +317,7 @@ export const AISettingsCard: React.FC<AISettingsCardProps> = ({ onConfigChange }
   const availableModels = Array.from(new Set([...(remoteModels.length > 0 ? remoteModels : []), ...currentProviderInfo.presetModels]));
 
   return (
+    <>
     <div className="bg-[#fcfaf7] rounded-3xl p-4 border border-[#e5decb] shadow-2xs space-y-4 text-stone-800">
       {/* 1. Profile selector row with action buttons */}
       <div className="flex items-center gap-2">
@@ -486,7 +526,7 @@ export const AISettingsCard: React.FC<AISettingsCardProps> = ({ onConfigChange }
           <button
             type="button"
             onClick={handleFetchModels}
-            disabled={isFetchingModels}
+            disabled={isFetchingModels || !baseUrl.trim()}
             className="flex items-center gap-1.5 px-3 py-2 bg-[#fdfcf9] hover:bg-[#f6f2e8] text-stone-800 rounded-xl border border-[#dcd3be] text-xs font-semibold shadow-2xs transition-colors shrink-0 active:scale-95 disabled:opacity-50"
             title="自動從 API 端點獲取所有可用模型"
           >
@@ -514,27 +554,139 @@ export const AISettingsCard: React.FC<AISettingsCardProps> = ({ onConfigChange }
         </div>
       )}
 
-      <div className="flex items-center justify-between pt-2 border-t border-[#e8dfce]">
-        <div className="text-[11px] text-stone-400">
-          金鑰加密儲存於瀏覽器，絕不向外部洩露
+      <div className="space-y-2 pt-2 border-t border-[#e8dfce]">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-[11px] text-stone-400 min-w-0">
+            金鑰儲存於瀏覽器，絕不外洩
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleTestConnection}
+              className="px-3 py-1.5 bg-[#eae2d3] hover:bg-[#ded4c3] text-stone-800 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors active:scale-95 shadow-2xs"
+            >
+              測試連線
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveCurrent}
+              className="px-3.5 py-1.5 bg-stone-900 hover:bg-black text-white rounded-xl text-xs font-semibold whitespace-nowrap shadow-2xs transition-colors active:scale-95"
+            >
+              {saveToast ? '已保存！' : '保存設定'}
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleTestConnection}
-            className="px-3 py-1.5 bg-[#eae2d3] hover:bg-[#ded4c3] text-stone-800 rounded-xl text-xs font-semibold transition-colors active:scale-95 shadow-2xs"
-          >
-            測試連線
-          </button>
-          <button
-            type="button"
-            onClick={handleSaveCurrent}
-            className="px-3.5 py-1.5 bg-stone-900 hover:bg-black text-white rounded-xl text-xs font-semibold shadow-2xs transition-colors active:scale-95"
-          >
-            {saveToast ? '已保存！' : '保存設定'}
-          </button>
-        </div>
+
+        {/* Clear AI coach conversation history */}
+        <button
+          type="button"
+          onClick={async () => {
+            const ok = await confirm('確定要清空與 AI 教練的所有對話記錄嗎？', {
+              title: '清空對話',
+              confirmText: '清空',
+            });
+            if (ok) clearChatHistory();
+          }}
+          className="w-full py-2 text-[11px] font-semibold text-stone-500 hover:text-rose-600 rounded-xl hover:bg-rose-50 transition-colors flex items-center justify-center gap-1.5"
+        >
+          <Eraser className="w-3.5 h-3.5" />
+          清空 AI 對話記錄
+        </button>
       </div>
     </div>
+
+    {/* Name input modal (add / rename profile) */}
+    {nameModal && (
+      <div
+        className="fixed inset-0 z-50 bg-stone-900/40 flex items-center justify-center p-4"
+        onClick={() => setNameModal(null)}
+      >
+        <div
+          className="w-full max-w-xs bg-[#fcfaf7] rounded-2xl border border-[#e5decb] shadow-xl p-4 space-y-3"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <h3 className="text-xs font-bold text-stone-800">
+            {nameModal.mode === 'add' ? '新建配置' : '重新命名配置'}
+          </h3>
+          <input
+            // eslint-disable-next-line jsx-a11y/no-autofocus
+            autoFocus
+            type="text"
+            value={nameModal.value}
+            onChange={(e) => setNameModal({ ...nameModal, value: e.target.value })}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                const name = nameModal.value.trim();
+                if (name) {
+                  if (nameModal.mode === 'add') confirmAddProfile(name);
+                  else confirmRenameProfile(name);
+                  setNameModal(null);
+                }
+              }
+              if (e.key === 'Escape') setNameModal(null);
+            }}
+            placeholder="配置名稱"
+            className="w-full px-3 py-2 bg-white rounded-xl border border-[#dcd3be] text-xs text-stone-800 placeholder:text-stone-400 focus:outline-hidden focus:border-amber-500"
+          />
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setNameModal(null)}
+              className="px-3 py-1.5 rounded-xl text-xs font-semibold text-stone-600 hover:bg-stone-100 transition-colors"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const name = nameModal.value.trim();
+                if (!name) return;
+                if (nameModal.mode === 'add') confirmAddProfile(name);
+                else confirmRenameProfile(name);
+                setNameModal(null);
+              }}
+              className="px-3.5 py-1.5 bg-stone-900 hover:bg-black text-white rounded-xl text-xs font-semibold transition-colors active:scale-95"
+            >
+              確定
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Delete confirmation modal */}
+    {askDelete && (
+      <div
+        className="fixed inset-0 z-50 bg-stone-900/40 flex items-center justify-center p-4"
+        onClick={() => setAskDelete(false)}
+      >
+        <div
+          className="w-full max-w-xs bg-[#fcfaf7] rounded-2xl border border-[#e5decb] shadow-xl p-4 space-y-3"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <h3 className="text-xs font-bold text-stone-800">刪除配置</h3>
+          <p className="text-xs text-stone-600 leading-relaxed">
+            確定要刪除「{activeProfile?.name}」嗎？此操作無法復原。
+          </p>
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setAskDelete(false)}
+              className="px-3 py-1.5 rounded-xl text-xs font-semibold text-stone-600 hover:bg-stone-100 transition-colors"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={confirmDeleteProfile}
+              className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold transition-colors active:scale-95"
+            >
+              刪除
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 };
