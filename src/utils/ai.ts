@@ -70,16 +70,6 @@ export const AI_PROVIDERS: AIProviderInfo[] = [
     placeholderKey: '粘贴 API Key (sk-...)',
     docUrl: 'https://platform.openai.com',
   },
-  {
-    key: 'gemini',
-    name: 'Google Gemini (官方內建)',
-    badge: '免配置 Key',
-    defaultBaseUrl: '',
-    defaultModel: 'gemini-3.8-flash',
-    presetModels: ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-2.5-pro'],
-    placeholderKey: '已內建系統金鑰，可直接暢享對話',
-    isBuiltIn: true,
-  },
 ];
 
 const STORAGE_KEY_AI_CONFIG = 'flowtimer_ai_config_v1';
@@ -104,14 +94,6 @@ export const DEFAULT_AI_PROFILES: AIProfileConfig[] = [
     baseUrl: 'https://api.deepseek.com/v1',
     model: 'deepseek-chat',
   },
-  {
-    id: 'profile-gemini',
-    name: 'Gemini 官方內建',
-    provider: 'gemini',
-    apiKey: '',
-    baseUrl: '',
-    model: 'gemini-3.8-flash',
-  },
 ];
 
 export const DEFAULT_AI_CONFIG: AIConfig = {
@@ -131,7 +113,14 @@ export function getSavedAIProfiles(): AIProfileConfig[] {
   }
   try {
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_AI_PROFILES;
+    // Migration: remove retired built-in Gemini profiles
+    const valid = Array.isArray(parsed) ? parsed.filter((p) => p.provider !== 'gemini') : [];
+    if (valid.length === 0) {
+      saveAIProfiles(DEFAULT_AI_PROFILES);
+      return DEFAULT_AI_PROFILES;
+    }
+    if (valid.length !== parsed.length) saveAIProfiles(valid);
+    return valid;
   } catch {
     return DEFAULT_AI_PROFILES;
   }
@@ -285,7 +274,7 @@ export async function sendChatMessage(
   config: AIConfig,
   userContext?: string
 ): Promise<string> {
-  const provider = config.provider || 'gemini';
+  const provider = config.provider || 'custom';
   const providerInfo = AI_PROVIDERS.find((p) => p.key === provider);
 
   const customConfig = {

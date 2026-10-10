@@ -5,8 +5,7 @@ export type AIProvider =
   | 'moonshot'
   | 'qwen'
   | 'doubao'
-  | 'openai'
-  | 'gemini';
+  | 'openai';
 
 export interface AIProviderInfo {
   key: AIProvider;
@@ -17,7 +16,6 @@ export interface AIProviderInfo {
   presetModels: string[];
   placeholderKey: string;
   docUrl?: string;
-  isBuiltIn?: boolean;
 }
 
 export interface AIConfig {

@@ -3,7 +3,6 @@ import express from 'express';
 import type { Request, Response } from 'express';
 import http from 'http';
 import path from 'path';
-import { GoogleGenAI } from '@google/genai';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -100,71 +99,20 @@ const PROVIDER_DEFAULTS = {
 };
 
 // Health check endpoint
-app.get('/api/health', (req: Request, res: Response) => {
-  res.json({
-    status: 'ok',
-    hasGeminiKey: Boolean(process.env.GEMINI_API_KEY),
-  });
+app.get('/api/health', (_req: Request, res: Response) => {
+  res.json({ status: 'ok' });
 });
 
 // AI Chat Proxy endpoint
 app.post('/api/chat', async (req: Request, res: Response) => {
   try {
-    const { messages, provider = 'gemini', customConfig, userContext } = req.body;
+    const { messages, provider = 'custom', customConfig, userContext } = req.body;
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: '請提供有效的 messages 對話記錄。' });
     }
 
-    // 1. Official Google Gemini (Built-in zero-config provider)
-    if (provider === 'gemini') {
-      const apiKey = customConfig?.apiKey || process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        return res.status(500).json({
-          error: '伺服器未檢測到 GEMINI_API_KEY，請確認環境變數已注入，或於設定中自訂 API Key。',
-        });
-      }
-
-      const ai = new GoogleGenAI({ apiKey });
-
-      // Transform messages to Gemini contents format
-      const formattedContents = messages.map((m: { role: string; content: string }) => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content }],
-      }));
-
-      const modelName = customConfig?.model || 'gemini-3.8-flash';
-
-      let lastError: unknown = null;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          const response = await ai.models.generateContent({
-            model: modelName,
-            contents: formattedContents,
-            config: {
-              systemInstruction: buildSystemInstruction(userContext),
-              temperature: 0.7,
-            },
-          });
-
-          return res.json({
-            content: response.text || '',
-            provider: 'gemini',
-            model: modelName,
-          });
-        } catch (err) {
-          lastError = err;
-          // Wait 1.2s before retry on transient error
-          if (attempt < 2) {
-            await new Promise((resolve) => setTimeout(resolve, 1200));
-          }
-        }
-      }
-
-      throw lastError;
-    }
-
-    // 2. OpenAI-compatible providers (DeepSeek, 智譜清言 GLM, 阿里通義千問, 月之暗面 Kimi, OpenAI, 自定義接口)
+    // OpenAI-compatible providers (DeepSeek, 智譜清言 GLM, 阿里通義千問, 月之暗面 Kimi, OpenAI, 自定義接口)
     const defaults = PROVIDER_DEFAULTS[provider as keyof typeof PROVIDER_DEFAULTS];
     const baseUrl = (customConfig?.baseUrl || defaults?.baseUrl || 'https://api.openai.com/v1').replace(/\/$/, '');
     const model = customConfig?.model || defaults?.model || 'gpt-4o-mini';
