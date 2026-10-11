@@ -272,7 +272,8 @@ export function extractProposedRoutine(text: string): { cleanText: string; routi
 export async function sendChatMessage(
   messages: Array<{ role: 'user' | 'assistant'; content: string }>,
   config: AIConfig,
-  userContext?: string
+  userContext?: string,
+  signal?: AbortSignal
 ): Promise<string> {
   const provider = config.provider || 'custom';
   const providerInfo = AI_PROVIDERS.find((p) => p.key === provider);
@@ -294,6 +295,7 @@ export async function sendChatMessage(
       customConfig,
       userContext,
     }),
+    signal,
   });
 
   if (!response.ok) {

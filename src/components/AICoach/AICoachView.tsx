@@ -3,14 +3,16 @@ import {
   Send,
   Bot,
   User,
-  Layers,
   Plus,
   Check,
   Play,
-  Clock,
-  Dumbbell,
   AlertCircle,
-  Library
+  Library,
+  Pencil,
+  Trash2,
+  Copy,
+  Square,
+  X
 } from 'lucide-react';
 import {
   ChatMessage,
@@ -25,7 +27,7 @@ import {
   CHAT_CLEARED_EVENT
 } from '../../utils/ai';
 import { WorkoutRoutine, RoutineExerciseItem, ExerciseItem, WorkoutGoalPlan, WorkoutLog, UserProfile } from '../../types/workout';
-import { formatTime, normalizeExerciseName } from '../../utils/storage';
+import { normalizeExerciseName } from '../../utils/storage';
 import { buildCoachContext } from '../../utils/goalTracker';
 import { ProposedRoutineExercise } from '../../types/ai';
 
@@ -70,6 +72,12 @@ export const AICoachView: React.FC<AICoachViewProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
+  // Inline edit / copy feedback / request abort
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
   // Names saved to library during this session (keyed by normalized exercise name)
   const [savedNames, setSavedNames] = useState<Set<string>>(new Set());
 
@@ -85,29 +93,16 @@ export const AICoachView: React.FC<AICoachViewProps> = ({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
 
-  // Send message to AI
-  const handleSendMessage = async (textToSend?: string) => {
-    const text = (textToSend || inputText).trim();
-    if (!text || isLoading) return;
-
-    setInputText('');
+  // 發送對話到 AI（historyWithUser 已包含最新一條 user 訊息）
+  const runChat = async (historyWithUser: ChatMessage[]) => {
     setErrorMsg('');
-
-    const userMessage: ChatMessage = {
-      id: 'msg-u-' + Date.now(),
-      role: 'user',
-      content: text,
-      timestamp: Date.now(),
-    };
-
-    const updatedHistory = [...messages, userMessage];
-    setMessages(updatedHistory);
-    saveChatHistory(updatedHistory);
     setIsLoading(true);
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     try {
       // Build conversation payload for API
-      const apiMessages = updatedHistory.map((m) => ({
+      const apiMessages = historyWithUser.map((m) => ({
         role: m.role,
         content: m.content,
       }));
@@ -115,7 +110,7 @@ export const AICoachView: React.FC<AICoachViewProps> = ({
       // Always read latest active AI config from Settings
       const currentConfig = getSavedAIConfig();
       const userContext = buildCoachContext({ profile: userProfile, goalPlans, logs });
-      const rawResponse = await sendChatMessage(apiMessages, currentConfig, userContext);
+      const rawResponse = await sendChatMessage(apiMessages, currentConfig, userContext, controller.signal);
 
       // Parse workout routine block if present
       const { cleanText, routine } = extractProposedRoutine(rawResponse);
@@ -128,15 +123,83 @@ export const AICoachView: React.FC<AICoachViewProps> = ({
         proposedRoutine: routine,
       };
 
-      const finalHistory = [...updatedHistory, assistantMessage];
+      const finalHistory = [...historyWithUser, assistantMessage];
       setMessages(finalHistory);
       saveChatHistory(finalHistory);
     } catch (err: unknown) {
+      if ((err as Error)?.name === 'AbortError') {
+        // 用戶主動終止，保留對話原狀不報錯
+        return;
+      }
       console.error('AI chat failed:', err);
       const msg = err instanceof Error ? err.message : '對話失敗，請檢查 API Key 或網路連線';
       setErrorMsg(msg);
     } finally {
       setIsLoading(false);
+      abortRef.current = null;
+    }
+  };
+
+  // Send message to AI
+  const handleSendMessage = async (textToSend?: string) => {
+    const text = (textToSend || inputText).trim();
+    if (!text || isLoading) return;
+
+    setInputText('');
+
+    const userMessage: ChatMessage = {
+      id: 'msg-u-' + Date.now(),
+      role: 'user',
+      content: text,
+      timestamp: Date.now(),
+    };
+
+    const updatedHistory = [...messages, userMessage];
+    setMessages(updatedHistory);
+    saveChatHistory(updatedHistory);
+    await runChat(updatedHistory);
+  };
+
+  // 終止生成
+  const handleStop = () => {
+    abortRef.current?.abort();
+  };
+
+  // 編輯 user 訊息後重新發送（丟棄該訊息之後的對話，重新生成）
+  const handleSubmitEdit = async () => {
+    const text = editText.trim();
+    if (!text || !editingId || isLoading) return;
+    const idx = messages.findIndex((m) => m.id === editingId);
+    if (idx < 0) return;
+
+    const editedMessage: ChatMessage = { ...messages[idx], content: text };
+    const updatedHistory = [...messages.slice(0, idx), editedMessage];
+    setMessages(updatedHistory);
+    saveChatHistory(updatedHistory);
+    setEditingId(null);
+    setEditText('');
+    await runChat(updatedHistory);
+  };
+
+  // 刪除單條訊息
+  const handleDeleteMessage = (id: string) => {
+    const updated = messages.filter((m) => m.id !== id);
+    setMessages(updated);
+    saveChatHistory(updated);
+    if (editingId === id) {
+      setEditingId(null);
+      setEditText('');
+    }
+  };
+
+  // 複製訊息內容
+  const handleCopyMessage = async (msg: ChatMessage) => {
+    try {
+      await navigator.clipboard.writeText(msg.content);
+      setCopiedId(msg.id);
+      setTimeout(() => setCopiedId((cur) => (cur === msg.id ? null : cur)), 1500);
+    } catch {
+      // clipboard 不可用時靜默失敗
     }
   };
 
@@ -259,7 +322,7 @@ export const AICoachView: React.FC<AICoachViewProps> = ({
   };
 
   return (
-    <div className="max-w-md mx-auto flex flex-col h-[calc(100vh-92px)] bg-[#faf8f5]">
+    <div className="max-w-md mx-auto flex flex-col h-[calc(100dvh-120px-env(safe-area-inset-bottom,0px))] bg-[#faf8f5]">
       {/* Chat Messages Container */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((msg) => {
@@ -276,17 +339,98 @@ export const AICoachView: React.FC<AICoachViewProps> = ({
                 </div>
               )}
 
-              <div className={`max-w-[85%] space-y-2.5`}>
-                {/* Text bubble */}
-                <div
-                  className={`p-3 rounded-2xl text-xs leading-relaxed ${
-                    isUser
-                      ? 'bg-stone-900 text-white rounded-tr-xs'
-                      : 'bg-white text-stone-800 border border-stone-200/80 shadow-2xs rounded-tl-xs whitespace-pre-wrap'
-                  }`}
-                >
-                  {msg.content}
-                </div>
+              <div className={`max-w-[85%] min-w-0 space-y-1.5`}>
+                {/* Text bubble or inline edit */}
+                {editingId === msg.id ? (
+                  <div className="space-y-1.5">
+                    <textarea
+                      value={editText}
+                      onChange={(e) => setEditText(e.target.value)}
+                      rows={Math.min(6, Math.max(1, editText.split('\n').length))}
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                          e.preventDefault();
+                          handleSubmitEdit();
+                        }
+                      }}
+                      className="w-full p-2.5 rounded-2xl text-xs leading-relaxed bg-white text-stone-800 border border-amber-400 resize-none focus:outline-hidden"
+                    />
+                    <div className="flex justify-end gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingId(null);
+                          setEditText('');
+                        }}
+                        className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg text-stone-500 hover:bg-stone-100"
+                      >
+                        <X className="w-3 h-3" />
+                        取消
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSubmitEdit}
+                        disabled={!editText.trim() || isLoading}
+                        className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg bg-stone-900 text-white disabled:opacity-40"
+                      >
+                        <Send className="w-3 h-3" />
+                        發送
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    className={`p-3 rounded-2xl text-xs leading-relaxed ${
+                      isUser
+                        ? 'bg-stone-900 text-white rounded-tr-xs break-words'
+                        : 'bg-white text-stone-800 border border-stone-200/80 shadow-2xs rounded-tl-xs whitespace-pre-wrap break-words'
+                    }`}
+                  >
+                    {msg.content}
+                  </div>
+                )}
+
+                {/* 氣泡操作列 */}
+                {editingId !== msg.id && (
+                  <div className={`flex items-center gap-0.5 ${isUser ? 'justify-end' : 'justify-start'}`}>
+                    {isUser && (
+                      <button
+                        type="button"
+                        title="編輯後重新發送"
+                        onClick={() => {
+                          setEditingId(msg.id);
+                          setEditText(msg.content);
+                        }}
+                        className="p-1 rounded-md text-stone-400 hover:text-stone-700 hover:bg-stone-200/70 transition-colors"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                    )}
+                    {!isUser && (
+                      <button
+                        type="button"
+                        title="複製內容"
+                        onClick={() => handleCopyMessage(msg)}
+                        className="p-1 rounded-md text-stone-400 hover:text-stone-700 hover:bg-stone-200/70 transition-colors"
+                      >
+                        {copiedId === msg.id ? (
+                          <Check className="w-3 h-3 text-emerald-600" />
+                        ) : (
+                          <Copy className="w-3 h-3" />
+                        )}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      title="刪除"
+                      onClick={() => handleDeleteMessage(msg.id)}
+                      className="p-1 rounded-md text-stone-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
 
                 {/* Interactive Proposed Workout Routine Card (If generated by AI) */}
                 {msg.proposedRoutine && (
@@ -464,7 +608,7 @@ export const AICoachView: React.FC<AICoachViewProps> = ({
             e.preventDefault();
             handleSendMessage();
           }}
-          className="flex items-center gap-2"
+          className="flex items-center gap-2 min-w-0"
         >
           <input
             type="text"
@@ -472,16 +616,27 @@ export const AICoachView: React.FC<AICoachViewProps> = ({
             onChange={(e) => setInputText(e.target.value)}
             placeholder="告訴教練你的目標、時間或限制..."
             disabled={isLoading}
-            className="flex-1 py-2.5 px-3.5 bg-stone-100 focus:bg-white rounded-2xl border border-stone-200 text-xs text-stone-800 placeholder-stone-400 focus:outline-hidden focus:border-amber-400 transition-colors shadow-inner"
+            className="flex-1 min-w-0 py-2.5 px-3.5 bg-stone-100 focus:bg-white rounded-2xl border border-stone-200 text-xs text-stone-800 placeholder-stone-400 focus:outline-hidden focus:border-amber-400 transition-colors shadow-inner"
           />
 
-          <button
-            type="submit"
-            disabled={!inputText.trim() || isLoading}
-            className="p-2.5 bg-stone-900 hover:bg-black text-white rounded-2xl disabled:opacity-40 disabled:hover:bg-stone-900 shadow-sm active:scale-95 transition-all shrink-0"
-          >
-            <Send className="w-4 h-4" />
-          </button>
+          {isLoading ? (
+            <button
+              type="button"
+              onClick={handleStop}
+              title="終止生成"
+              className="p-2.5 bg-stone-900 hover:bg-black text-white rounded-2xl shadow-sm active:scale-95 transition-all shrink-0"
+            >
+              <Square className="w-3.5 h-3.5 fill-current" />
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={!inputText.trim()}
+              className="p-2.5 bg-stone-900 hover:bg-black text-white rounded-2xl disabled:opacity-40 disabled:hover:bg-stone-900 shadow-sm active:scale-95 transition-all shrink-0"
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          )}
         </form>
       </div>
     </div>
