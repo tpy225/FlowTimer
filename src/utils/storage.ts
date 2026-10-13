@@ -318,6 +318,35 @@ export function saveRoutines(routines: WorkoutRoutine[]): void {
   localStorage.setItem(STORAGE_KEYS.ROUTINES, JSON.stringify(routines));
 }
 
+// 動作庫改名後，同步更新所有組合內對應動作的名稱（依 exerciseId，比不到則用名稱比對）
+export function syncRoutineExerciseNames(
+  routines: WorkoutRoutine[],
+  exercises: ExerciseItem[]
+): { routines: WorkoutRoutine[]; changed: boolean } {
+  let changed = false;
+  const updated = routines.map((r) => {
+    let routineChanged = false;
+    const newExercises = r.exercises.map((item) => {
+      const byId = exercises.find((e) => e.id === item.exerciseId);
+      const byName = !byId
+        ? exercises.find((e) => normalizeExerciseName(e.name) === normalizeExerciseName(item.name))
+        : null;
+      const lib = byId || byName;
+      if (lib && lib.name !== item.name) {
+        routineChanged = true;
+        return { ...item, name: lib.name };
+      }
+      return item;
+    });
+    if (routineChanged) {
+      changed = true;
+      return { ...r, exercises: newExercises };
+    }
+    return r;
+  });
+  return { routines: updated, changed };
+}
+
 export function toggleFavoriteRoutine(id: string): WorkoutRoutine[] {
   const current = getSavedRoutines();
   const updated = current.map((r) => (r.id === id ? { ...r, isFavorite: !r.isFavorite } : r));

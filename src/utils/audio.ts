@@ -100,6 +100,32 @@ class SoundEffects {
     }
   }
 
+  // 全部訓練即將結束前的醒目提示音（上揚雙音）
+  playFinishWarningPip(frequency = 1046) {
+    const ctx = this.getContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      [frequency, frequency * 1.26].forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + idx * 0.12);
+
+        gain.gain.setValueAtTime(0.24, now + idx * 0.12);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.12 + 0.22);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(now + idx * 0.12);
+        osc.stop(now + idx * 0.12 + 0.22);
+      });
+    } catch (e) {
+      console.warn('Finish warning pip error', e);
+    }
+  }
+
   // Triumphant Fanfare for workout finish
   playVictoryChime() {
     const ctx = this.getContext();

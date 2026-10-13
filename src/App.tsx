@@ -18,6 +18,7 @@ import {
   saveExercises,
   getSavedRoutines,
   saveRoutines,
+  syncRoutineExerciseNames,
   getSavedLogs,
   saveLogs,
   getSavedSettings,
@@ -80,14 +81,18 @@ export default function App() {
 
   // Load saved data on startup
   useEffect(() => {
+    const savedExercises = getSavedExercises();
     const savedRoutines = getSavedRoutines();
-    setExercises(getSavedExercises());
-    setRoutines(savedRoutines);
+    setExercises(savedExercises);
+    // 啟動時以動作庫名稱同步既有組合
+    const { routines: syncedRoutines, changed } = syncRoutineExerciseNames(savedRoutines, savedExercises);
+    setRoutines(syncedRoutines);
+    if (changed) saveRoutines(syncedRoutines);
     setLogs(getSavedLogs());
     setSettings(getSavedSettings());
     setUserProfile(getSavedUserProfile());
     setWeightLogs(getSavedWeightLogs());
-    setGoalPlans(getSavedGoalPlans(savedRoutines));
+    setGoalPlans(getSavedGoalPlans(syncedRoutines));
   }, []);
 
   // Goal Plan mutations (Multiple goals supported!)
@@ -107,15 +112,17 @@ export default function App() {
   };
 
   // Exercise library mutations
-  const handleAddExercise = (newEx: Omit<ExerciseItem, 'id' | 'createdAt'>) => {
+  const handleAddExercise = (newEx: Omit<ExerciseItem, 'id' | 'createdAt'>): string => {
+    const id = 'ex-' + Date.now();
     const item: ExerciseItem = {
       ...newEx,
-      id: 'ex-' + Date.now(),
+      id,
       createdAt: Date.now(),
     };
     const updated = [item, ...exercises];
     setExercises(updated);
     saveExercises(updated);
+    return id;
   };
 
   // Save one AI-proposed exercise into the library; false = duplicate name
@@ -127,12 +134,12 @@ export default function App() {
     videoUrl?: string;
     imageUrl?: string;
     notes?: string;
-  }): boolean => {
+  }): string | false => {
     const current = getSavedExercises();
     const key = normalizeExerciseName(ex.name);
     if (current.some((e) => normalizeExerciseName(e.name) === key)) return false;
 
-    handleAddExercise({
+    return handleAddExercise({
       name: ex.name.trim(),
       category: 'fullbody',
       defaultSets: ex.sets || 3,
@@ -142,13 +149,19 @@ export default function App() {
       imageUrl: ex.imageUrl,
       description: ex.notes,
     });
-    return true;
   };
 
   const handleUpdateExercise = (updatedEx: ExerciseItem) => {
     const updated = exercises.map((e) => (e.id === updatedEx.id ? updatedEx : e));
     setExercises(updated);
     saveExercises(updated);
+
+    // 動作庫改名後同步所有組合內的動作名稱
+    const { routines: syncedRoutines, changed } = syncRoutineExerciseNames(routines, updated);
+    if (changed) {
+      setRoutines(syncedRoutines);
+      saveRoutines(syncedRoutines);
+    }
   };
 
   const handleDeleteExercise = (id: string) => {
@@ -164,12 +177,14 @@ export default function App() {
 
   // Routine mutations
   const handleSaveRoutine = (routineToSave: WorkoutRoutine) => {
-    const exists = routines.some((r) => r.id === routineToSave.id);
+    // 儲存時順手以動作庫最新名稱校正連結的動作
+    const { routines: syncedAll } = syncRoutineExerciseNames(routines, exercises);
+    const exists = syncedAll.some((r) => r.id === routineToSave.id);
     let updated: WorkoutRoutine[];
     if (exists) {
-      updated = routines.map((r) => (r.id === routineToSave.id ? routineToSave : r));
+      updated = syncedAll.map((r) => (r.id === routineToSave.id ? routineToSave : r));
     } else {
-      updated = [routineToSave, ...routines];
+      updated = [routineToSave, ...syncedAll];
     }
     setRoutines(updated);
     saveRoutines(updated);

@@ -30,7 +30,7 @@ interface RoutineEditorModalProps {
     videoUrl?: string;
     imageUrl?: string;
     notes?: string;
-  }) => boolean;
+  }) => string | false;
 }
 
 export const RoutineEditorModal: React.FC<RoutineEditorModalProps> = ({
@@ -109,12 +109,25 @@ export const RoutineEditorModal: React.FC<RoutineEditorModalProps> = ({
   };
 
   // Badge: emerald when the exercise already exists in library; click to add when missing
+  const findLibraryExercise = (item: RoutineExerciseItem) =>
+    allExercises.find((e) => e.id === item.exerciseId) ||
+    allExercises.find((e) => normalizeExerciseName(e.name) === normalizeExerciseName(item.name));
+
   const isExerciseInLibrary = (name: string) => {
     const norm = normalizeExerciseName(name);
     return allExercises.some((e) => normalizeExerciseName(e.name) === norm);
   };
 
-  const handleBadgeClick = async (item: RoutineExerciseItem) => {
+  // 數字輸入：去除前綴 0、上限封頂；空白/0 允許暫留，onBlur 再補下限
+  const parseNumberInput = (raw: string, max: number) => {
+    const cleaned = raw.replace(/^0+(?=\d)/, '');
+    if (cleaned === '') return 0;
+    const n = parseInt(cleaned, 10);
+    if (Number.isNaN(n)) return 0;
+    return Math.min(max, n);
+  };
+
+  const handleBadgeClick = async (item: RoutineExerciseItem, idx: number) => {
     if (isExerciseInLibrary(item.name)) return;
     const ok = await confirm(`將「${item.name}」加入動作庫嗎？`, {
       title: '加入動作庫',
@@ -122,7 +135,7 @@ export const RoutineEditorModal: React.FC<RoutineEditorModalProps> = ({
       danger: false,
     });
     if (!ok) return;
-    onSaveExerciseToLibrary({
+    const newId = onSaveExerciseToLibrary({
       name: item.name,
       sets: item.sets,
       workSeconds: item.workSeconds,
@@ -131,6 +144,8 @@ export const RoutineEditorModal: React.FC<RoutineEditorModalProps> = ({
       imageUrl: item.imageUrl,
       notes: item.notes,
     });
+    // 建立正式連結，之後動作庫改名會自動同步
+    if (newId) handleUpdateItem(idx, { exerciseId: newId });
   };
 
   // Temporary mock object to compute duration
@@ -154,6 +169,11 @@ export const RoutineEditorModal: React.FC<RoutineEditorModalProps> = ({
       return;
     }
 
+    if (exercises.some((ex) => !findLibraryExercise(ex) && !ex.name.trim())) {
+      showAlert('有動作尚未填寫名稱，請補上後再儲存。');
+      return;
+    }
+
     const savedRoutine: WorkoutRoutine = {
       id: routine?.id || 'routine-' + Date.now(),
       title: title.trim(),
@@ -161,7 +181,10 @@ export const RoutineEditorModal: React.FC<RoutineEditorModalProps> = ({
       tag: tag.trim() || '自訂組合',
       coverImage: coverImage.trim() || undefined,
       prepareSeconds: Number(prepareSeconds) || 5,
-      exercises,
+      exercises: exercises.map((ex) => {
+        const lib = findLibraryExercise(ex);
+        return lib ? { ...ex, name: lib.name } : { ...ex, name: ex.name.trim() };
+      }),
       createdAt: routine?.createdAt || Date.now(),
       isPreset: routine?.isPreset || false,
     };
@@ -276,17 +299,17 @@ export const RoutineEditorModal: React.FC<RoutineEditorModalProps> = ({
                   >
                     {/* Item title and order controls */}
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
                         {(() => {
-                          const inLib = isExerciseInLibrary(item.name);
+                          const linked = !!findLibraryExercise(item);
                           return (
                             <button
                               type="button"
-                              onClick={() => handleBadgeClick(item)}
-                              disabled={inLib}
-                              title={inLib ? '已在動作庫中' : '點擊加入動作庫'}
-                              className={`w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center transition-colors active:scale-90 ${
-                                inLib
+                              onClick={() => handleBadgeClick(item, idx)}
+                              disabled={linked}
+                              title={linked ? '已在動作庫中（名稱連結）' : '點擊加入動作庫'}
+                              className={`w-5 h-5 shrink-0 rounded-full text-[10px] font-bold flex items-center justify-center transition-colors active:scale-90 ${
+                                linked
                                   ? 'bg-amber-100/70 text-amber-800 cursor-default'
                                   : 'bg-stone-200 text-stone-700 hover:bg-amber-200'
                               }`}
@@ -295,9 +318,19 @@ export const RoutineEditorModal: React.FC<RoutineEditorModalProps> = ({
                             </button>
                           );
                         })()}
-                        <h4 className="font-bold text-xs text-stone-800 truncate max-w-[170px]">
-                          {item.name}
-                        </h4>
+                        {findLibraryExercise(item) ? (
+                          <h4 className="font-bold text-xs text-stone-800 truncate" title="名稱連結自動作庫，請至動作庫修改">
+                            {findLibraryExercise(item)!.name}
+                          </h4>
+                        ) : (
+                          <input
+                            type="text"
+                            value={item.name}
+                            onChange={(e) => handleUpdateItem(idx, { name: e.target.value })}
+                            placeholder="輸入動作名稱"
+                            className="flex-1 min-w-0 font-bold text-xs text-stone-800 bg-transparent border-b border-transparent hover:border-stone-300 focus:border-amber-400 focus:outline-hidden py-0.5"
+                          />
+                        )}
                       </div>
 
                       <div className="flex items-center gap-1">
@@ -339,7 +372,8 @@ export const RoutineEditorModal: React.FC<RoutineEditorModalProps> = ({
                           min="1"
                           max="20"
                           value={item.sets}
-                          onChange={(e) => handleUpdateItem(idx, { sets: Number(e.target.value) })}
+                          onChange={(e) => handleUpdateItem(idx, { sets: parseNumberInput(e.target.value, 20) })}
+                          onBlur={() => item.sets < 1 && handleUpdateItem(idx, { sets: 1 })}
                           className="w-full text-center p-1 rounded-lg border border-stone-200 bg-stone-50 font-mono text-xs focus:outline-hidden focus:border-amber-400"
                         />
                       </div>
@@ -350,7 +384,8 @@ export const RoutineEditorModal: React.FC<RoutineEditorModalProps> = ({
                           min="5"
                           max="600"
                           value={item.workSeconds}
-                          onChange={(e) => handleUpdateItem(idx, { workSeconds: Number(e.target.value) })}
+                          onChange={(e) => handleUpdateItem(idx, { workSeconds: parseNumberInput(e.target.value, 600) })}
+                          onBlur={() => item.workSeconds < 5 && handleUpdateItem(idx, { workSeconds: 5 })}
                           className="w-full text-center p-1 rounded-lg border border-emerald-200 bg-emerald-50/50 font-mono text-xs focus:outline-hidden focus:border-emerald-400"
                         />
                       </div>
@@ -361,7 +396,7 @@ export const RoutineEditorModal: React.FC<RoutineEditorModalProps> = ({
                           min="0"
                           max="300"
                           value={item.restSeconds}
-                          onChange={(e) => handleUpdateItem(idx, { restSeconds: Number(e.target.value) })}
+                          onChange={(e) => handleUpdateItem(idx, { restSeconds: parseNumberInput(e.target.value, 300) })}
                           className="w-full text-center p-1 rounded-lg border border-sky-200 bg-sky-50/50 font-mono text-xs focus:outline-hidden focus:border-sky-400"
                         />
                       </div>

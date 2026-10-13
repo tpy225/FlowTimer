@@ -58,10 +58,18 @@ export const ActiveWorkoutScreen: React.FC<ActiveWorkoutScreenProps> = ({
   // Exit dialog
   const [showExitConfirm, setShowExitConfirm] = useState(false);
 
-  // Audio unlock helper
+  // Audio unlock helper + 開始前提示音
   useEffect(() => {
     soundEffects.unlock();
+    if (soundBeepEnabled) soundEffects.playStartChime();
   }, []);
+
+  // 是否為整個訓練的最後一個 work（最後一項的最後一組）
+  const isFinalWorkSet =
+    phase === 'work' &&
+    !!currentExercise &&
+    currentExerciseIndex === routine.exercises.length - 1 &&
+    currentSet >= currentExercise.sets;
 
   // Compute total sets in routine for stats
   useEffect(() => {
@@ -125,15 +133,16 @@ export const ActiveWorkoutScreen: React.FC<ActiveWorkoutScreenProps> = ({
     if (phase === 'work') {
       // Check if more sets in this exercise
       if (currentSet < currentExercise.sets) {
-        // Move to rest between sets
+        // Move to rest between sets (set count increments now, rest = 進入下一組前的休息)
         if (currentExercise.restSeconds > 0) {
+          setCurrentSet((s) => s + 1);
           setPhase('rest');
           setPhaseTotalSeconds(currentExercise.restSeconds);
           setSecondsRemaining(currentExercise.restSeconds);
           soundEffects.playRestChime();
           if (speechEnabled) {
             voiceAssistant.speak(
-              `休息 ${currentExercise.restSeconds} 秒，下一組依然是：${currentExercise.name}`,
+              `休息 ${currentExercise.restSeconds} 秒，接著第 ${currentSet + 1} 組：${currentExercise.name}`,
               speechEnabled,
               userSettings.speechRate
             );
@@ -223,7 +232,12 @@ export const ActiveWorkoutScreen: React.FC<ActiveWorkoutScreenProps> = ({
           // Warning countdown beep for last X seconds (e.g. 3, 2, 1)
           const nextSec = prevSec - 1;
           if (soundBeepEnabled && nextSec <= userSettings.countdownSeconds && nextSec > 0) {
-            soundEffects.playCountdownPip(700 + (userSettings.countdownSeconds - nextSec) * 120);
+            if (isFinalWorkSet) {
+              // 結束前提示音：最後一組最後幾秒上揚雙音
+              soundEffects.playFinishWarningPip(988 + (userSettings.countdownSeconds - nextSec) * 160);
+            } else {
+              soundEffects.playCountdownPip(700 + (userSettings.countdownSeconds - nextSec) * 120);
+            }
           }
           return nextSec;
         }
@@ -254,6 +268,7 @@ export const ActiveWorkoutScreen: React.FC<ActiveWorkoutScreenProps> = ({
     userSettings.countdownSeconds,
     userSettings.speechRate,
     advanceToNextStep,
+    isFinalWorkSet,
   ]);
 
   // Controls
@@ -336,9 +351,9 @@ export const ActiveWorkoutScreen: React.FC<ActiveWorkoutScreenProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-[#faf8f5] text-stone-800 pb-16">
+    <div className="h-[100dvh] flex flex-col overflow-hidden bg-[#faf8f5] text-stone-800">
       {/* Top Navigation Bar */}
-      <div className="sticky top-0 z-30 bg-[#faf8f5]/90 backdrop-blur-md px-4 py-3 border-b border-stone-200/60 flex items-center justify-between">
+      <div className="shrink-0 bg-[#faf8f5]/90 backdrop-blur-md px-4 py-3 border-b border-stone-200/60 flex items-center justify-between">
         <button
           onClick={() => setShowExitConfirm(true)}
           className="p-2 -ml-2 rounded-xl text-stone-600 hover:text-stone-900 hover:bg-stone-200/60 active:scale-95 transition-all flex items-center gap-1 text-sm font-medium"
@@ -371,40 +386,44 @@ export const ActiveWorkoutScreen: React.FC<ActiveWorkoutScreenProps> = ({
         </button>
       </div>
 
-      {/* Main Container */}
-      <div className="max-w-md mx-auto px-4 pt-4">
-        {/* Upper Big Timer Display */}
-        <TimerDisplay
-          phase={phase}
-          secondsRemaining={secondsRemaining}
-          phaseTotalSeconds={phaseTotalSeconds}
-          currentExercise={currentExercise}
-          nextExercise={nextExercise}
-          currentSet={currentSet}
-          totalSets={currentExercise?.sets || 1}
-          currentExerciseIndex={currentExerciseIndex}
-          totalExercises={routine.exercises.length}
-          totalElapsedSeconds={totalElapsedSeconds}
-          autoAdvance={autoAdvance}
-          speechEnabled={speechEnabled}
-          soundBeepEnabled={soundBeepEnabled}
-          onTogglePlayPause={handleTogglePlayPause}
-          onSkipNext={handleSkipNext}
-          onSkipPrev={handleSkipPrev}
-          onToggleAutoAdvance={handleToggleAutoAdvance}
-          onToggleSpeech={handleToggleSpeech}
-          onManualAdvanceNow={advanceToNextStep}
-        />
+      {/* Main Container：秒表固定，時間軸獨立捲動 */}
+      <div className="flex-1 min-h-0 w-full max-w-md mx-auto px-4 pt-4 flex flex-col">
+        {/* Upper Big Timer Display（固定不捲動） */}
+        <div className="shrink-0">
+          <TimerDisplay
+            phase={phase}
+            secondsRemaining={secondsRemaining}
+            phaseTotalSeconds={phaseTotalSeconds}
+            currentExercise={currentExercise}
+            nextExercise={nextExercise}
+            currentSet={currentSet}
+            totalSets={currentExercise?.sets || 1}
+            currentExerciseIndex={currentExerciseIndex}
+            totalExercises={routine.exercises.length}
+            totalElapsedSeconds={totalElapsedSeconds}
+            autoAdvance={autoAdvance}
+            speechEnabled={speechEnabled}
+            soundBeepEnabled={soundBeepEnabled}
+            onTogglePlayPause={handleTogglePlayPause}
+            onSkipNext={handleSkipNext}
+            onSkipPrev={handleSkipPrev}
+            onToggleAutoAdvance={handleToggleAutoAdvance}
+            onToggleSpeech={handleToggleSpeech}
+            onManualAdvanceNow={advanceToNextStep}
+          />
+        </div>
 
-        {/* Lower Vertical Timeline List */}
-        <TimelineList
-          exercises={routine.exercises}
-          currentExerciseIndex={currentExerciseIndex}
-          currentSet={currentSet}
-          phase={phase}
-          onOpenVideo={handleOpenVideo}
-          onJumpToExercise={handleJumpToExercise}
-        />
+        {/* Lower Vertical Timeline List（像字幕一樣自動上移） */}
+        <div className="flex-1 min-h-0 overflow-y-auto -mx-4 px-4">
+          <TimelineList
+            exercises={routine.exercises}
+            currentExerciseIndex={currentExerciseIndex}
+            currentSet={currentSet}
+            phase={phase}
+            onOpenVideo={handleOpenVideo}
+            onJumpToExercise={handleJumpToExercise}
+          />
+        </div>
       </div>
 
       {/* Floating Video Player (PiP / Modal) */}

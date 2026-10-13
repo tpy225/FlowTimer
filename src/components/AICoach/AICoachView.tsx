@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import {
   Send,
   Bot,
@@ -47,7 +47,7 @@ interface AICoachViewProps {
     videoUrl?: string;
     imageUrl?: string;
     notes?: string;
-  }) => boolean;
+  }) => string | false;
 }
 
 const QUICK_PROMPTS = [
@@ -82,6 +82,26 @@ export const AICoachView: React.FC<AICoachViewProps> = ({
   const [savedNames, setSavedNames] = useState<Set<string>>(new Set());
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  // 即時量測頂欄底／底欄頂，避免寫死高度在不同裝置被遮擋或留白
+  const [viewport, setViewport] = useState<{ top: number; bottom: number } | null>(null);
+  useLayoutEffect(() => {
+    const measure = () => {
+      const header = document.querySelector('header')?.getBoundingClientRect();
+      const nav = document.querySelector('nav')?.getBoundingClientRect();
+      setViewport({
+        top: header?.bottom ?? 0,
+        bottom: nav ? window.innerHeight - nav.top : 0,
+      });
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    window.visualViewport?.addEventListener('resize', measure);
+    return () => {
+      window.removeEventListener('resize', measure);
+      window.visualViewport?.removeEventListener('resize', measure);
+    };
+  }, []);
 
   // Load chat history
   useEffect(() => {
@@ -322,7 +342,10 @@ export const AICoachView: React.FC<AICoachViewProps> = ({
   };
 
   return (
-    <div className="max-w-md mx-auto flex flex-col h-[calc(100dvh-120px-env(safe-area-inset-bottom,0px))] bg-[#faf8f5]">
+    <div
+      className="fixed left-1/2 -translate-x-1/2 w-full max-w-md flex flex-col bg-[#faf8f5] z-20"
+      style={viewport ? { top: viewport.top, bottom: viewport.bottom } : { opacity: 0 }}
+    >
       {/* Chat Messages Container */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((msg) => {

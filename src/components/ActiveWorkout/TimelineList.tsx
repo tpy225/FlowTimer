@@ -1,5 +1,5 @@
-import React from 'react';
-import { PlayCircle, Check, Clock, RotateCcw, Video } from 'lucide-react';
+import React, { useEffect, useRef } from 'react';
+import { Check, Clock, RotateCcw, Video } from 'lucide-react';
 import { RoutineExerciseItem, WorkoutPhase } from '../../types/workout';
 
 interface TimelineListProps {
@@ -19,8 +19,23 @@ export const TimelineList: React.FC<TimelineListProps> = ({
   onOpenVideo,
   onJumpToExercise,
 }) => {
+  const itemRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const firstRun = useRef(true);
+
+  // 當前項目自動置中（像字幕上移），首次渲染不捲動
+  useEffect(() => {
+    if (firstRun.current) {
+      firstRun.current = false;
+      return;
+    }
+    itemRefs.current[currentExerciseIndex]?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center',
+    });
+  }, [currentExerciseIndex]);
+
   return (
-    <div className="w-full mt-4 pb-20">
+    <div className="w-full mt-4 pb-6">
       <div className="flex items-center justify-between mb-3 px-1">
         <h4 className="text-sm font-bold text-stone-700 uppercase tracking-wider flex items-center gap-1.5">
           <Clock className="w-4 h-4 text-stone-400" />
@@ -41,6 +56,9 @@ export const TimelineList: React.FC<TimelineListProps> = ({
           return (
             <div
               key={item.id || idx}
+              ref={(el) => {
+                itemRefs.current[idx] = el;
+              }}
               className={`relative flex items-start gap-3 transition-all duration-300 ${
                 isCurrent ? 'scale-[1.01]' : 'opacity-90'
               }`}
