@@ -5,14 +5,19 @@ class SoundEffects {
 
   private getContext(): AudioContext | null {
     if (typeof window === 'undefined') return null;
+    // context 被系統關閉時重建（iOS 中斷後可能進入 closed）
+    if (this.ctx && this.ctx.state === 'closed') {
+      this.ctx = null;
+    }
     if (!this.ctx) {
       const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (AudioCtx) {
         this.ctx = new AudioCtx();
       }
     }
-    if (this.ctx && this.ctx.state === 'suspended') {
-      this.ctx.resume();
+    if (this.ctx && (this.ctx.state === 'suspended' || this.ctx.state === 'interrupted')) {
+      // iOS：中斷（鎖屏、語音 session 切換）後需主動 resume
+      this.ctx.resume().catch(() => {});
     }
     return this.ctx;
   }
@@ -21,7 +26,7 @@ class SoundEffects {
   unlock() {
     const ctx = this.getContext();
     if (ctx && ctx.state === 'suspended') {
-      ctx.resume();
+      ctx.resume().catch(() => {});
     }
   }
 
@@ -156,9 +161,37 @@ class SoundEffects {
 
 export const soundEffects = new SoundEffects();
 
+// 回到頁面／手指觸碰時確保 context 恢復，避免中斷後音效靜默
+if (typeof window !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') soundEffects.unlock();
+  });
+  window.addEventListener('pointerdown', () => soundEffects.unlock(), { once: false });
+}
+
 // Speech Synthesis Helper
 class VoiceAssistant {
   private isSpeaking = false;
+  private heartbeat: ReturnType<typeof setInterval> | null = null;
+
+  // iOS 語音合成已知問題：連續播報約 10-15 秒後會自行停止，用 pause/resume 心跳保活
+  private startHeartbeat() {
+    this.stopHeartbeat();
+    this.heartbeat = setInterval(() => {
+      if (!('speechSynthesis' in window)) return;
+      if (this.isSpeaking && !window.speechSynthesis.paused) {
+        window.speechSynthesis.pause();
+        window.speechSynthesis.resume();
+      }
+    }, 8000);
+  }
+
+  private stopHeartbeat() {
+    if (this.heartbeat) {
+      clearInterval(this.heartbeat);
+      this.heartbeat = null;
+    }
+  }
 
   speak(text: string, enabled = true, rate = 1.0) {
     if (!enabled || typeof window === 'undefined' || !('speechSynthesis' in window)) {
@@ -185,12 +218,15 @@ class VoiceAssistant {
 
       utterance.onstart = () => {
         this.isSpeaking = true;
+        this.startHeartbeat();
       };
       utterance.onend = () => {
         this.isSpeaking = false;
+        this.stopHeartbeat();
       };
       utterance.onerror = () => {
         this.isSpeaking = false;
+        this.stopHeartbeat();
       };
 
       window.speechSynthesis.speak(utterance);
@@ -203,6 +239,7 @@ class VoiceAssistant {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
       this.isSpeaking = false;
+      this.stopHeartbeat();
     }
   }
 }
